@@ -1,0 +1,2437 @@
+<!DOCTYPE html>
+<html lang="zh-CN" class="dark">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover" />
+  <title>AI 带货实战陪练舱</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script>
+    tailwind.config = {
+      darkMode: 'class',
+      theme: {
+        extend: {
+          colors: {
+            obsidian: '#09090b',
+            surface: '#121216',
+            panel: '#18181f',
+            accent: '#f43f5e',
+            live: '#ef4444'
+          },
+          fontFamily: {
+            sans: ['-apple-system', 'BlinkMacSystemFont', '"PingFang SC"', '"Microsoft YaHei"', 'Inter', 'sans-serif']
+          }
+        }
+      }
+    };
+  </script>
+  <style>
+    :root {
+      --sat: env(safe-area-inset-top, 0px);
+      --sab: env(safe-area-inset-bottom, 0px);
+    }
+
+    * {
+      -webkit-tap-highlight-color: transparent;
+      box-sizing: border-box;
+    }
+
+    html, body {
+      margin: 0;
+      padding: 0;
+      height: 100dvh;
+      width: 100%;
+      background-color: #09090b;
+      color: #f4f4f5;
+      overflow: hidden;
+      overscroll-behavior: none;
+    }
+
+    /* 隐藏滚动条但保留滚动能力 */
+    .no-scrollbar::-webkit-scrollbar {
+      display: none;
+    }
+    .no-scrollbar {
+      -ms-overflow-style: none;
+      scrollbar-width: none;
+    }
+
+    /* 直播间无摄像头时的动态极光呼吸背景 */
+    @keyframes auroraShift {
+      0%, 100% {
+        transform: translate(0%, 0%) scale(1);
+        opacity: 0.55;
+      }
+      50% {
+        transform: translate(4%, -4%) scale(1.08);
+        opacity: 0.8;
+      }
+    }
+
+    .aurora-blob {
+      animation: auroraShift 9s ease-in-out infinite;
+    }
+
+    /* 弹幕进入动画 */
+    @keyframes commentSlideIn {
+      from {
+        opacity: 0;
+        transform: translateY(10px) scale(0.97);
+      }
+      to {
+        opacity: 1;
+        transform: translateY(0) scale(1);
+      }
+    }
+
+    .comment-enter {
+      animation: commentSlideIn 0.25s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+    }
+
+    /* 礼物横幅进入动画 */
+    @keyframes giftSlideIn {
+      from {
+        opacity: 0;
+        transform: translateX(-28px) scale(0.95);
+      }
+      to {
+        opacity: 1;
+        transform: translateX(0) scale(1);
+      }
+    }
+
+    .gift-banner-enter {
+      animation: giftSlideIn 0.28s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+    }
+
+    /* 麦克风脉搏 */
+    @keyframes micPulse {
+      0%, 100% { box-shadow: 0 0 0 0 rgba(244, 63, 94, 0.45); }
+      50% { box-shadow: 0 0 0 10px rgba(244, 63, 94, 0); }
+    }
+
+    .mic-active {
+      animation: micPulse 1.5s infinite;
+    }
+
+    /* 合规水印 */
+    .compliance-watermark {
+      pointer-events: none;
+      user-select: none;
+      text-shadow: 0 1px 2px rgba(0, 0, 0, 0.85);
+    }
+
+    /* 摄像头镜像 */
+    .mirror-video {
+      transform: scaleX(-1);
+    }
+
+    .filter-natural { filter: none; }
+    .filter-bright { filter: brightness(1.1) contrast(1.04) saturate(1.08); }
+    .filter-warm { filter: brightness(1.05) sepia(0.14) saturate(1.15); }
+    .filter-studio { filter: contrast(1.12) brightness(1.06) saturate(1.12); }
+  </style>
+</head>
+<body class="bg-obsidian text-zinc-100 antialiased selection:bg-rose-500/30">
+  <div id="app" class="relative mx-auto flex h-full w-full max-w-md flex-col bg-obsidian sm:my-2 sm:h-[calc(100dvh-1rem)] sm:rounded-[32px] sm:border sm:border-zinc-800/80 sm:shadow-2xl overflow-hidden">
+
+    <!-- ==================== 1. 开播配置页 ==================== -->
+    <section id="setupView" class="flex h-full flex-col overflow-y-auto no-scrollbar px-4 pt-4 pb-28" style="padding-top: calc(1rem + var(--sat));">
+      <!-- 顶部标题与错题本入口 -->
+      <header class="mb-4 flex items-center justify-between">
+        <div>
+          <div class="inline-flex items-center gap-1.5 rounded-full bg-rose-500/10 border border-rose-500/25 px-2.5 py-0.5 text-[11px] font-medium text-rose-300">
+            <span class="h-1.5 w-1.5 rounded-full bg-rose-400"></span>
+            AI 模拟带货陪练 · 非真实直播
+          </div>
+          <h1 class="mt-1.5 text-xl font-bold tracking-tight text-white">直播带货话术陪练舱</h1>
+          <p class="text-xs text-zinc-400">模拟买家提问、极限词雷达、随机送礼与逼单复盘</p>
+        </div>
+
+        <button
+          id="openNotebookBtn"
+          type="button"
+          class="relative flex items-center gap-1.5 rounded-2xl border border-zinc-800 bg-panel px-3 py-2 text-xs font-medium text-zinc-200 hover:border-zinc-700 active:scale-95 transition"
+        >
+          <span>错题本</span>
+          <span id="notebookBadge" class="rounded-full bg-rose-500/20 px-1.5 py-0.5 text-[10px] font-semibold text-rose-300">0</span>
+        </button>
+      </header>
+
+      <!-- 训练模式选择 -->
+      <div class="mb-4">
+        <label class="mb-2 block text-xs font-medium text-zinc-400">训练模式</label>
+        <div class="grid grid-cols-3 gap-2" id="trainingModeGroup">
+          <button type="button" data-mode="normal" class="mode-btn rounded-2xl border border-rose-500 bg-rose-500/15 p-2.5 text-left transition">
+            <div class="text-xs font-semibold text-white">新手抗压</div>
+            <div class="mt-0.5 text-[10px] text-zinc-400">均衡提问与节奏</div>
+          </button>
+          <button type="button" data-mode="sprint" class="mode-btn rounded-2xl border border-zinc-800 bg-panel p-2.5 text-left hover:border-zinc-700 transition">
+            <div class="text-xs font-semibold text-zinc-200">逼单冲刺</div>
+            <div class="mt-0.5 text-[10px] text-zinc-400">30秒紧迫促单挑战</div>
+          </button>
+          <button type="button" data-mode="compliance" class="mode-btn rounded-2xl border border-zinc-800 bg-panel p-2.5 text-left hover:border-zinc-700 transition">
+            <div class="text-xs font-semibold text-zinc-200">违禁词找茬</div>
+            <div class="mt-0.5 text-[10px] text-zinc-400">高频踩雷与追问</div>
+          </button>
+        </div>
+      </div>
+
+      <!-- 品类筛选与 10 大品类预设 -->
+      <div class="mb-4">
+        <div class="mb-2 flex items-center justify-between">
+          <label class="text-xs font-medium text-zinc-400">选择带货品类（10大类目）</label>
+          <button id="toggleScriptPreviewBtn" type="button" class="text-[11px] font-medium text-rose-400 hover:text-rose-300">
+            查看本类高频话术 ▾
+          </button>
+        </div>
+
+        <!-- 类目分组筛选 -->
+        <div id="categoryFilterBar" class="mb-2.5 flex gap-1.5 overflow-x-auto no-scrollbar pb-0.5">
+          <button type="button" data-cat="all" class="cat-filter-btn shrink-0 rounded-full bg-zinc-100 px-3 py-1 text-[11px] font-semibold text-zinc-950 transition">全部(10)</button>
+          <button type="button" data-cat="home_beauty" class="cat-filter-btn shrink-0 rounded-full bg-panel border border-zinc-800 px-3 py-1 text-[11px] text-zinc-300 hover:border-zinc-700 transition">日用美妆</button>
+          <button type="button" data-cat="food" class="cat-filter-btn shrink-0 rounded-full bg-panel border border-zinc-800 px-3 py-1 text-[11px] text-zinc-300 hover:border-zinc-700 transition">吃喝生鲜</button>
+          <button type="button" data-cat="fashion_tech" class="cat-filter-btn shrink-0 rounded-full bg-panel border border-zinc-800 px-3 py-1 text-[11px] text-zinc-300 hover:border-zinc-700 transition">穿搭数码</button>
+          <button type="button" data-cat="pet_local" class="cat-filter-btn shrink-0 rounded-full bg-panel border border-zinc-800 px-3 py-1 text-[11px] text-zinc-300 hover:border-zinc-700 transition">母婴养宠本地</button>
+        </div>
+
+        <!-- 品类卡片横向滚动 -->
+        <div id="productPresetGrid" class="flex gap-2.5 overflow-x-auto no-scrollbar pb-1"></div>
+
+        <!-- 品类话术与应答思路折叠面板 -->
+        <div id="scriptPreviewDrawer" class="mt-2.5 hidden rounded-2xl border border-zinc-800 bg-panel/90 p-3 text-xs space-y-2.5"></div>
+      </div>
+
+      <!-- 商品核心信息 -->
+      <div class="mb-4 rounded-2xl border border-zinc-800/90 bg-panel p-3.5 space-y-3">
+        <div class="grid grid-cols-3 gap-2.5">
+          <div class="col-span-2">
+            <label for="productNameInput" class="mb-1 block text-[11px] text-zinc-400">1号商品名称</label>
+            <input
+              id="productNameInput"
+              type="text"
+              maxlength="36"
+              class="w-full rounded-xl border border-zinc-800 bg-obsidian px-3 py-2 text-xs text-white placeholder-zinc-500 focus:border-rose-500 focus:outline-none"
+              placeholder="例如：新疆长绒棉加厚浴巾 2条装"
+            />
+          </div>
+          <div>
+            <label for="productPriceInput" class="mb-1 block text-[11px] text-zinc-400">直播到手价</label>
+            <input
+              id="productPriceInput"
+              type="text"
+              maxlength="16"
+              class="w-full rounded-xl border border-zinc-800 bg-obsidian px-3 py-2 text-xs text-rose-300 font-medium placeholder-zinc-500 focus:border-rose-500 focus:outline-none"
+              placeholder="¥39.9"
+            />
+          </div>
+        </div>
+
+        <div>
+          <label for="productSellingPointInput" class="mb-1 block text-[11px] text-zinc-400">核心卖点 / 赠品福利 / 售后保障</label>
+          <input
+            id="productSellingPointInput"
+            type="text"
+            maxlength="90"
+            class="w-full rounded-xl border border-zinc-800 bg-obsidian px-3 py-2 text-xs text-zinc-200 placeholder-zinc-500 focus:border-rose-500 focus:outline-none"
+            placeholder="例如：600g重磅克重、无甲醛A类婴幼儿标准、顺丰包邮、破损包退"
+          />
+        </div>
+
+        <div>
+          <label for="customConcernsInput" class="mb-1 block text-[11px] text-zinc-400">
+            本场最怕被问到的顾虑（最多 3 条，用中文/英文逗号或换行分隔）
+          </label>
+          <input
+            id="customConcernsInput"
+            type="text"
+            maxlength="120"
+            class="w-full rounded-xl border border-zinc-800 bg-obsidian px-3 py-2 text-xs text-zinc-200 placeholder-zinc-500 focus:border-rose-500 focus:outline-none"
+            placeholder="例如：洗了掉毛吗、能不能开发票、今天能发走吗"
+          />
+        </div>
+      </div>
+
+      <!-- 高级参数手风琴（买家画像、流量池、音视频设置） -->
+      <div class="mb-2 rounded-2xl border border-zinc-800/80 bg-panel/70 overflow-hidden">
+        <button
+          id="toggleAdvancedBtn"
+          type="button"
+          class="flex w-full items-center justify-between px-3.5 py-3 text-left text-xs font-medium text-zinc-200 hover:bg-zinc-800/40 transition"
+        >
+          <span class="flex items-center gap-2">
+            <span>进阶参数：买家画像 / 流量池 / 摄像头</span>
+            <span id="advancedSummaryBadge" class="rounded-md bg-zinc-800 px-1.5 py-0.5 text-[10px] text-zinc-400">3人设 · 10K流量</span>
+          </span>
+          <span id="advancedChevron" class="text-zinc-400">▾</span>
+        </button>
+
+        <div id="advancedPanel" class="hidden border-t border-zinc-800/80 p-3.5 space-y-4">
+          <!-- 买家施压画像（多选） -->
+          <div>
+            <div class="mb-2 flex items-center justify-between">
+              <span class="text-[11px] text-zinc-400">买家画像（可多选，至少 1 个）</span>
+            </div>
+            <div id="buyerToneGroup" class="grid grid-cols-2 gap-2">
+              <button type="button" data-tone="bargain" class="tone-btn rounded-xl border border-rose-500/80 bg-rose-500/15 px-3 py-2 text-left transition">
+                <div class="text-xs font-medium text-white">比价砍价党</div>
+                <div class="text-[10px] text-zinc-400">问同款低价、求赠品免单</div>
+              </button>
+              <button type="button" data-tone="skeptic" class="tone-btn rounded-xl border border-rose-500/80 bg-rose-500/15 px-3 py-2 text-left transition">
+                <div class="text-xs font-medium text-white">品控质疑党</div>
+                <div class="text-[10px] text-zinc-400">抠材质成分、挑刺追问</div>
+              </button>
+              <button type="button" data-tone="aftersales" class="tone-btn rounded-xl border border-zinc-800 bg-obsidian px-3 py-2 text-left hover:border-zinc-700 transition">
+                <div class="text-xs font-medium text-zinc-200">物流售后党</div>
+                <div class="text-[10px] text-zinc-400">催发货、问退换运费险</div>
+              </button>
+              <button type="button" data-tone="hype" class="tone-btn rounded-xl border border-rose-500/80 bg-rose-500/15 px-3 py-2 text-left transition">
+                <div class="text-xs font-medium text-white">抢购气氛组</div>
+                <div class="text-[10px] text-zinc-400">催上车、刷已拍、送礼物</div>
+              </button>
+            </div>
+          </div>
+
+          <!-- 推流流量池规模 -->
+          <div>
+            <span class="mb-2 block text-[11px] text-zinc-400">直播间流量池规模</span>
+            <div id="scaleGroup" class="grid grid-cols-3 gap-2">
+              <button type="button" data-scale="1000" class="scale-btn rounded-xl border border-zinc-800 bg-obsidian py-2 text-center text-xs text-zinc-300 hover:border-zinc-700 transition">
+                1K 冷启动
+              </button>
+              <button type="button" data-scale="10000" class="scale-btn rounded-xl border border-rose-500/80 bg-rose-500/15 py-2 text-center text-xs font-medium text-white transition">
+                10K 小爆款
+              </button>
+              <button type="button" data-scale="50000" class="scale-btn rounded-xl border border-zinc-800 bg-obsidian py-2 text-center text-xs text-zinc-300 hover:border-zinc-700 transition">
+                50K 大热门
+              </button>
+            </div>
+          </div>
+
+          <!-- 摄像头与麦克风开关 -->
+          <div class="flex items-center justify-between gap-2 pt-1">
+            <button
+              id="toggleCameraBtn"
+              type="button"
+              class="flex-1 rounded-xl border border-zinc-800 bg-obsidian px-3 py-2 text-xs text-zinc-200 hover:border-zinc-700 transition"
+            >
+              前置镜头：<span id="cameraStatusLabel" class="text-zinc-400">关闭</span>
+            </button>
+            <button
+              id="toggleMicPrefBtn"
+              type="button"
+              class="flex-1 rounded-xl border border-zinc-800 bg-obsidian px-3 py-2 text-xs text-zinc-200 hover:border-zinc-700 transition"
+            >
+              语音识别：<span id="micPrefLabel" class="text-emerald-400">开启</span>
+            </button>
+          </div>
+
+          <!-- 可选 Gemini API Key（留空自动使用智能本地引擎） -->
+          <div>
+            <label for="apiKeyInput" class="mb-1 flex items-center justify-between text-[11px] text-zinc-400">
+              <span>Gemini API Key（可选，留空自动本地模拟）</span>
+              <span class="text-[10px] text-zinc-500">仅存本地浏览器</span>
+            </label>
+            <input
+              id="apiKeyInput"
+              type="password"
+              autocomplete="off"
+              class="w-full rounded-xl border border-zinc-800 bg-obsidian px-3 py-2 text-xs text-zinc-200 placeholder-zinc-600 focus:border-rose-500 focus:outline-none"
+              placeholder="AIzaSy...（无 Key 也可完整体验所有功能）"
+            />
+          </div>
+        </div>
+      </div>
+
+      <!-- 底部固定开播按钮 -->
+      <div
+        class="pointer-events-none fixed bottom-0 left-0 right-0 z-20 mx-auto w-full max-w-md bg-gradient-to-t from-obsidian via-obsidian/95 to-transparent px-4 pt-4"
+        style="padding-bottom: calc(1rem + var(--sab));"
+      >
+        <button
+          id="startLiveBtn"
+          type="button"
+          class="pointer-events-auto flex w-full items-center justify-center gap-2 rounded-2xl bg-gradient-to-r from-rose-500 to-pink-600 py-3.5 text-sm font-bold text-white shadow-lg shadow-rose-600/25 hover:brightness-110 active:scale-[0.99] transition"
+        >
+          <span class="h-2 w-2 rounded-full bg-white animate-pulse"></span>
+          <span>立即开播 · 开始实战陪练</span>
+        </button>
+      </div>
+    </section>
+
+    <!-- ==================== 2. 直播间实战页 ==================== -->
+    <section id="liveView" class="relative hidden h-full w-full flex-col justify-between overflow-hidden bg-zinc-950">
+      <!-- 视频背景 / 暗色极光呼吸背景 -->
+      <div class="absolute inset-0 z-0 overflow-hidden">
+        <video
+          id="cameraVideo"
+          autoplay
+          playsinline
+          muted
+          class="hidden h-full w-full object-cover mirror-video filter-natural"
+        ></video>
+
+        <div id="fallbackBg" class="relative h-full w-full bg-gradient-to-b from-zinc-900 via-zinc-950 to-black">
+          <div class="aurora-blob absolute -top-24 -left-20 h-72 w-72 rounded-full bg-rose-600/20 blur-3xl"></div>
+          <div class="aurora-blob absolute top-1/3 -right-24 h-80 w-80 rounded-full bg-indigo-500/15 blur-3xl" style="animation-delay: -3s;"></div>
+          <div class="aurora-blob absolute bottom-12 left-10 h-64 w-64 rounded-full bg-amber-500/10 blur-3xl" style="animation-delay: -6s;"></div>
+        </div>
+
+        <!-- 暗色渐变遮罩保证弹幕可读性 -->
+        <div class="pointer-events-none absolute inset-0 bg-gradient-to-b from-black/55 via-black/15 to-black/80"></div>
+      </div>
+
+      <!-- 顶部栏：直播状态、在线人数、GMV、音浪钻数、健康分与结束按钮 -->
+      <header
+        class="relative z-20 flex items-center justify-between gap-2 px-3 pt-3"
+        style="padding-top: calc(0.75rem + var(--sat));"
+      >
+        <div class="flex items-center gap-1.5 rounded-full bg-black/55 backdrop-blur-md border border-white/10 px-2.5 py-1">
+          <span class="inline-flex items-center gap-1 rounded-full bg-rose-500 px-2 py-0.5 text-[10px] font-bold text-white">
+            <span class="h-1.5 w-1.5 rounded-full bg-white animate-ping"></span>
+            模拟直播
+          </span>
+          <span id="liveTimer" class="font-mono text-[11px] text-zinc-200">00:00</span>
+          <span class="text-zinc-600">|</span>
+          <span id="viewerCountDisplay" class="text-[11px] font-semibold text-white">0人</span>
+        </div>
+
+        <div class="flex items-center gap-1.5">
+          <div class="rounded-full bg-black/55 backdrop-blur-md border border-white/10 px-2.5 py-1 text-[11px]">
+            <span class="text-zinc-400">GMV</span>
+            <span id="gmvDisplay" class="ml-0.5 font-semibold text-amber-300">¥0</span>
+          </div>
+          <div class="rounded-full bg-black/55 backdrop-blur-md border border-white/10 px-2.5 py-1 text-[11px]">
+            <span class="text-zinc-400">礼物</span>
+            <span id="giftValueDisplay" class="ml-0.5 font-semibold text-pink-300">0钻</span>
+          </div>
+          <div class="rounded-full bg-black/55 backdrop-blur-md border border-white/10 px-2 py-1 text-[11px]">
+            <span class="text-zinc-400">健康</span>
+            <span id="healthScoreDisplay" class="ml-0.5 font-semibold text-emerald-400">100</span>
+          </div>
+          <button
+            id="endLiveBtn"
+            type="button"
+            class="rounded-full bg-zinc-900/80 backdrop-blur-md border border-white/15 px-2.5 py-1 text-[11px] font-medium text-zinc-200 hover:bg-rose-600 hover:text-white transition"
+          >
+            下播
+          </button>
+        </div>
+      </header>
+
+      <!-- 模式/逼单倒计时条 & 合规违禁词红黄牌警报 -->
+      <div class="relative z-20 mt-2 px-3 space-y-2">
+        <!-- 逼单冲刺倒计时条（仅 sprint 模式或促单时展示） -->
+        <div id="sprintBanner" class="hidden items-center justify-between rounded-xl border border-amber-400/35 bg-amber-500/15 backdrop-blur-md px-3 py-1.5 text-xs">
+          <div class="flex items-center gap-1.5 text-amber-200 font-medium">
+            <span>🔥 逼单冲刺倒计时</span>
+            <span id="sprintCountdown" class="font-mono font-bold text-amber-300">30s</span>
+          </div>
+          <span class="text-[11px] text-amber-100/80">快报福利 + 催单上车！</span>
+        </div>
+
+        <!-- 违禁词分级预警条 -->
+        <div id="violationAlert" class="hidden rounded-2xl border px-3 py-2 text-xs backdrop-blur-md shadow-lg transition">
+          <div class="flex items-start justify-between gap-2">
+            <div>
+              <div id="violationTitle" class="font-bold"></div>
+              <div id="violationSuggestion" class="mt-0.5 text-[11px] opacity-90"></div>
+            </div>
+            <button id="dismissViolationBtn" type="button" class="text-[11px] opacity-75 hover:opacity-100">✕</button>
+          </div>
+        </div>
+      </div>
+
+      <!-- 中部区域：左侧弹幕流 + 痛点置顶卡 + 礼物连击横幅；右侧快捷动作 -->
+      <div class="relative z-10 flex flex-1 min-h-0 items-end justify-between gap-2 px-3 pt-2 pb-2">
+        <!-- 左侧主交互区 -->
+        <div class="flex h-full w-[78%] flex-col justify-end min-h-0">
+          <!-- 抖音风格随机送礼连击横幅 -->
+          <div id="giftBannerContainer" class="mb-2 min-h-[2px]"></div>
+
+          <!-- 8秒痛点质疑置顶卡（支持多轮连贯追问） -->
+          <div id="painPointCard" class="hidden mb-2 rounded-2xl border border-amber-400/45 bg-zinc-950/88 backdrop-blur-md p-2.5 shadow-xl">
+            <div class="flex items-center justify-between gap-2 text-[11px]">
+              <span class="inline-flex items-center gap-1 font-semibold text-amber-300">
+                <span>⚡ 买家灵魂拷问</span>
+                <span id="painRoundBadge" class="rounded bg-amber-500/20 px-1.5 py-0.5 text-[10px]">第1轮</span>
+              </span>
+              <span id="painTimerText" class="font-mono font-bold text-rose-400">8.0s</span>
+            </div>
+            <p id="painQuestionText" class="mt-1 text-xs font-medium text-white leading-snug"></p>
+            <div class="mt-1.5 flex items-center justify-between text-[10px] text-zinc-400">
+              <span id="painHintText">开口回答或输入拆解话术即可成交</span>
+              <div class="flex items-center gap-2">
+                <button id="painHintBtn" type="button" class="text-sky-300 hover:underline">看思路</button>
+                <button id="painSkipBtn" type="button" class="text-zinc-400 hover:text-zinc-200">换一题</button>
+              </div>
+            </div>
+          </div>
+
+          <!-- 滚动弹幕列表 -->
+          <div id="chatFeed" class="flex max-h-60 flex-col gap-1.5 overflow-y-auto no-scrollbar pr-1"></div>
+
+          <!-- 常驻合规防误解水印 -->
+          <div class="compliance-watermark mt-1.5 text-[10px] font-medium tracking-wide text-white/45">
+            AI 模拟带货陪练 · 非真实直播 · 弹幕由 AI 生成
+          </div>
+        </div>
+
+        <!-- 右侧快捷工具栏 -->
+        <div class="flex flex-col items-center gap-2 pb-1">
+          <!-- 1号小黄车促单按钮 -->
+          <button
+            id="cartBoostBtn"
+            type="button"
+            class="flex flex-col items-center justify-center rounded-2xl border border-amber-400/40 bg-amber-500/20 backdrop-blur-md px-2.5 py-2 text-amber-200 hover:bg-amber-500/30 active:scale-95 transition"
+            title="点击小黄车喊单促转化"
+          >
+            <span class="text-base leading-none">🛒</span>
+            <span class="mt-1 text-[10px] font-semibold">促单</span>
+          </button>
+
+          <!-- 手动触发随机送礼体验 -->
+          <button
+            id="testRandomGiftBtn"
+            type="button"
+            class="flex flex-col items-center justify-center rounded-2xl border border-pink-400/35 bg-pink-500/15 backdrop-blur-md px-2.5 py-2 text-pink-200 hover:bg-pink-500/25 active:scale-95 transition"
+            title="模拟观众随机送礼"
+          >
+            <span class="text-base leading-none">🎁</span>
+            <span class="mt-1 text-[10px] font-medium">随机礼</span>
+          </button>
+
+          <!-- 镜头切换 / 美颜切换 -->
+          <button
+            id="cycleFilterBtn"
+            type="button"
+            class="flex flex-col items-center justify-center rounded-2xl border border-white/15 bg-black/55 backdrop-blur-md px-2.5 py-2 text-zinc-200 hover:bg-black/75 active:scale-95 transition"
+            title="切换画面滤镜"
+          >
+            <span class="text-base leading-none">✨</span>
+            <span id="filterNameLabel" class="mt-1 text-[10px] text-zinc-300">自然</span>
+          </button>
+
+          <!-- 触发痛点提问 -->
+          <button
+            id="triggerPainNowBtn"
+            type="button"
+            class="flex flex-col items-center justify-center rounded-2xl border border-white/15 bg-black/55 backdrop-blur-md px-2.5 py-2 text-zinc-200 hover:bg-black/75 active:scale-95 transition"
+            title="立刻来一道买家难题"
+          >
+            <span class="text-base leading-none">💬</span>
+            <span class="mt-1 text-[10px] text-zinc-300">出题</span>
+          </button>
+        </div>
+      </div>
+
+      <!-- 底部操作区：快捷话术胶囊 + 语音/文字输入栏 -->
+      <div
+        class="relative z-20 bg-gradient-to-t from-black via-black/90 to-transparent px-3 pt-1.5"
+        style="padding-bottom: calc(0.75rem + var(--sab));"
+      >
+        <!-- 快捷应答/逼单胶囊 -->
+        <div class="mb-2 flex gap-1.5 overflow-x-auto no-scrollbar">
+          <button type="button" data-quick="家人们看清楚细节，这款性价比真的非常高，支持七天无理由退换！" class="quick-phrase-btn shrink-0 rounded-full border border-white/15 bg-white/10 px-3 py-1 text-[11px] text-zinc-100 hover:bg-white/20 transition">
+            讲品质+售后
+          </button>
+          <button type="button" data-quick="来，1号链接库存不多了，拍完这波就恢复日常价，抓紧时间上车！" class="quick-phrase-btn shrink-0 rounded-full border border-rose-400/35 bg-rose-500/20 px-3 py-1 text-[11px] text-rose-100 hover:bg-rose-500/30 transition">
+            紧迫逼单话术
+          </button>
+          <button type="button" data-quick="今天直播间额外多送一份实用小赠品，有需要的直接拍一号小黄车！" class="quick-phrase-btn shrink-0 rounded-full border border-amber-400/35 bg-amber-500/20 px-3 py-1 text-[11px] text-amber-100 hover:bg-amber-500/30 transition">
+            送赠品促拍
+          </button>
+        </div>
+
+        <!-- 实时语音转写提示 -->
+        <div id="liveTranscriptBar" class="mb-1.5 hidden truncate rounded-lg bg-rose-500/15 border border-rose-500/30 px-2.5 py-1 text-[11px] text-rose-200">
+          正在听你讲：<span id="liveTranscriptText"></span>
+        </div>
+
+        <div class="flex items-center gap-2">
+          <button
+            id="micToggleBtn"
+            type="button"
+            class="flex h-10 w-10 shrink-0 items-center justify-center rounded-full border border-white/15 bg-zinc-900/90 text-base text-white hover:border-rose-400 transition"
+            title="开启/关闭语音麦克风"
+          >
+            🎙️
+          </button>
+
+          <form id="chatForm" class="flex flex-1 items-center gap-1.5">
+            <input
+              id="utteranceInput"
+              type="text"
+              autocomplete="off"
+              class="h-10 flex-1 rounded-full border border-white/15 bg-zinc-900/85 px-3.5 text-xs text-white placeholder-zinc-400 focus:border-rose-500 focus:outline-none"
+              placeholder="输入或说出你的带货话术..."
+            />
+            <button
+              type="submit"
+              class="h-10 shrink-0 rounded-full bg-rose-500 px-4 text-xs font-semibold text-white hover:bg-rose-600 active:scale-95 transition"
+            >
+              发送
+            </button>
+          </form>
+        </div>
+      </div>
+    </section>
+
+    <!-- ==================== 3. 直播复盘诊断弹窗 ==================== -->
+    <div id="reportModal" class="fixed inset-0 z-40 hidden items-end sm:items-center justify-center bg-black/75 backdrop-blur-sm p-3">
+      <div class="flex max-h-[88dvh] w-full max-w-md flex-col rounded-3xl border border-zinc-800 bg-surface overflow-hidden shadow-2xl">
+        <div class="flex items-center justify-between border-b border-zinc-800/90 px-4 py-3.5">
+          <div>
+            <h2 class="text-base font-bold text-white">本场带货实战复盘报告</h2>
+            <p id="reportSubtitle" class="text-[11px] text-zinc-400"></p>
+          </div>
+          <span id="reportGradeBadge" class="rounded-2xl bg-rose-500/20 border border-rose-500/40 px-3 py-1 text-base font-black text-rose-300">A</span>
+        </div>
+
+        <div id="reportContent" class="flex-1 overflow-y-auto no-scrollbar p-4 space-y-3.5 text-xs"></div>
+
+        <div class="flex items-center gap-2 border-t border-zinc-800/90 bg-panel px-4 py-3">
+          <button
+            id="exportScriptBtn"
+            type="button"
+            class="flex-1 rounded-xl border border-zinc-700 bg-obsidian py-2.5 text-xs font-medium text-zinc-200 hover:bg-zinc-800 transition"
+          >
+            导出话术单
+          </button>
+          <button
+            id="exportPosterBtn"
+            type="button"
+            class="flex-1 rounded-xl border border-rose-500/40 bg-rose-500/15 py-2.5 text-xs font-medium text-rose-200 hover:bg-rose-500/25 transition"
+          >
+            导出复盘长图
+          </button>
+          <button
+            id="closeReportBtn"
+            type="button"
+            class="rounded-xl bg-white px-4 py-2.5 text-xs font-bold text-zinc-950 hover:bg-zinc-200 transition"
+          >
+            再来一局
+          </button>
+        </div>
+      </div>
+    </div>
+
+    <!-- ==================== 4. 个人话术错题本弹窗 ==================== -->
+    <div id="notebookModal" class="fixed inset-0 z-40 hidden items-end sm:items-center justify-center bg-black/75 backdrop-blur-sm p-3">
+      <div class="flex max-h-[85dvh] w-full max-w-md flex-col rounded-3xl border border-zinc-800 bg-surface overflow-hidden shadow-2xl">
+        <div class="flex items-center justify-between border-b border-zinc-800 px-4 py-3.5">
+          <div>
+            <h2 class="text-base font-bold text-white">个人话术错题本</h2>
+            <p class="text-[11px] text-zinc-400">自动沉淀踩雷违禁词与未接住的买家顾虑</p>
+          </div>
+          <button id="closeNotebookBtn" type="button" class="rounded-lg bg-zinc-800 px-2.5 py-1 text-xs text-zinc-300 hover:text-white">关闭</button>
+        </div>
+
+        <div id="notebookContent" class="flex-1 overflow-y-auto no-scrollbar p-4 space-y-3 text-xs"></div>
+
+        <div class="flex items-center justify-between gap-2 border-t border-zinc-800 bg-panel px-4 py-3">
+          <button
+            id="applyMistakesToConcernsBtn"
+            type="button"
+            class="flex-1 rounded-xl bg-rose-500 py-2.5 text-xs font-semibold text-white hover:bg-rose-600 transition"
+          >
+            一键设为本场重点考题
+          </button>
+          <button
+            id="clearNotebookBtn"
+            type="button"
+            class="rounded-xl border border-zinc-700 bg-obsidian px-3 py-2.5 text-xs text-zinc-400 hover:text-rose-300 transition"
+          >
+            清空
+          </button>
+        </div>
+      </div>
+    </div>
+
+    <!-- 轻量 Toast 提示 -->
+    <div id="toastEl" class="pointer-events-none fixed top-16 left-1/2 z-50 -translate-x-1/2 rounded-full bg-zinc-900/95 border border-zinc-700 px-4 py-1.5 text-xs font-medium text-white opacity-0 shadow-xl transition-opacity duration-200"></div>
+  </div>
+
+  <script>
+    // ==================== 1. 10 大带货品类库 ====================
+    const PRODUCT_TEMPLATES = [
+      {
+        id: 'towel_home',
+        cat: 'home_beauty',
+        tag: '家纺床品',
+        name: '新疆长绒棉加厚浴巾 2条装',
+        price: '¥39.9',
+        sellingPoint: '600g重磅克重、A类母婴标准、吸水快干不易掉毛、顺丰包邮',
+        painQuestions: [
+          '新浴巾洗完会不会掉毛沾在身上？',
+          '这价格是两条一起还是只有一条？',
+          '纯棉的洗久了会不会变硬发黄？'
+        ],
+        scriptTips: [
+          '先报克重与 A 类标准消除皮肤顾虑，再亮出“2条装+包邮”的价格锚点。',
+          '面对掉毛质疑，强调“长绒棉长纤维 + 出厂前水洗/抖毛工艺”，承诺不支持满意可沟通售后。'
+        ],
+        sampleComments: [
+          '两条39.9？那一条不到20块啊',
+          '吸水性怎么样，洗完澡擦干快吗',
+          '刚拍了一单，准备给孩子用',
+          '有没有深色系，怕浅色不耐脏'
+        ]
+      },
+      {
+        id: 'skincare_serum',
+        cat: 'home_beauty',
+        tag: '护肤美妆',
+        name: '神经酰胺修护精华液 50ml',
+        price: '¥69.0',
+        sellingPoint: '换季泛红修护、清爽不黏腻、敏感肌可用、买1正装送同款体验装',
+        painQuestions: [
+          '换季脸上泛红起皮，涂这个会不会刺痛？',
+          '油痘肌用会不会闷痘或者太油腻？',
+          '赠品的小样是正装同款吗，保质期多久？'
+        ],
+        scriptTips: [
+          '切忌说“根治/医疗级”，重点讲“修护屏障保湿、清爽肤感、先在耳后试用”。',
+          '把赠品价值和保质期说透，降低首次尝试的试错成本。'
+        ],
+        sampleComments: [
+          '敏感肌真的能用吗，别吹牛',
+          '质地厚重吗，夏天涂会不会闷',
+          '赠品给多少毫升呀',
+          '成分表干净吗，有没有香精'
+        ]
+      },
+      {
+        id: 'fruit_fresh',
+        cat: 'food',
+        tag: '生鲜水果',
+        name: '现摘爆汁耙耙柑 5斤净重装',
+        price: '¥29.9',
+        sellingPoint: '果园现摘现发、皮薄无籽汁水足、坏果包赔、顺丰/京东冷链派送',
+        painQuestions: [
+          '路上颠簸会不会压烂？坏果怎么赔？',
+          '甜度够不够，会不会很酸或者有籽？',
+          '5斤是净重还是带箱子的毛重？'
+        ],
+        scriptTips: [
+          '生鲜核心是“净重 + 坏果赔付规则 + 口感甜度描述”，立刻打消生鲜损耗顾虑。',
+          '说明发货时效与赔付拍照流程，让买家觉得稳妥。'
+        ],
+        sampleComments: [
+          '净重5斤吗？别扣箱子重量',
+          '坏果按什么标准赔呀',
+          '甜度高不高，家里老人爱吃甜的',
+          '今天下单什么时候能发出'
+        ]
+      },
+      {
+        id: 'snack_tea',
+        cat: 'food',
+        tag: '茶饮零食',
+        name: '明前特级毛峰绿茶 250g礼盒',
+        price: '¥58.0',
+        sellingPoint: '高山茶园采摘、豆香清雅耐泡、独立小袋分装、送礼体面',
+        painQuestions: [
+          '这真是明前茶吗，冲泡几泡就没味了？',
+          '送长辈的话，包装盒看着体面吗？',
+          '喝起来会不会苦涩刮胃？'
+        ],
+        scriptTips: [
+          '用“汤色清亮、香气层次、耐泡度”替代绝对化夸大，突出独立小袋便携锁鲜。',
+          '针对送礼场景给出搭配建议，方便用户直接下单。'
+        ],
+        sampleComments: [
+          '一罐能泡多少次呀',
+          '礼盒带手提袋吗，想送客户',
+          '喝着苦不苦，我平时喝茶不多',
+          '产地是哪里的，生产日期新鲜吗'
+        ]
+      },
+      {
+        id: 'apparel_hoodie',
+        cat: 'fashion_tech',
+        tag: '服饰鞋包',
+        name: '420g重磅纯棉连帽卫衣',
+        price: '¥79.0',
+        sellingPoint: '挺括有型不软塌、落肩版型不挑身材、机洗不易变形、运费险齐全',
+        painQuestions: [
+          '165cm/120斤穿什么码合适，偏大还是偏小？',
+          '洗几次领口和下摆会不会松垮变形？',
+          '尺码不合适退换要自己出运费吗？'
+        ],
+        scriptTips: [
+          '直接报身高体重尺码对照建议，明确告知退换货保障与运费险规则。',
+          '强调克重与领口罗纹工艺，解决版型塌陷痛点。'
+        ],
+        sampleComments: [
+          '175cm 140斤穿L还是XL？',
+          '领口容易松吗，机洗行不行',
+          '有运费险吗，拍错了好换码',
+          '灰色是偏深灰还是浅灰'
+        ]
+      },
+      {
+        id: 'tech_charger',
+        cat: 'fashion_tech',
+        tag: '3C数码',
+        name: '65W氮化镓三口快充头',
+        price: '¥65.0',
+        sellingPoint: '手机电脑都能充、温控稳不发烫、折叠插脚好收纳、一年质保换新',
+        painQuestions: [
+          '充苹果和华为手机都能触发快充协议吗？',
+          '长时间快充会不会发烫严重？',
+          '质保怎么算，坏了是修还是直接换新？'
+        ],
+        scriptTips: [
+          '把兼容设备与安全温控讲清楚，明确质保周期与售后响应方式。',
+          '突出体积小巧、一头多充的桌面/出差便利性。'
+        ],
+        sampleComments: [
+          '充笔记本电脑带得动吗',
+          '三口同时插会断连重连吗',
+          '发烫厉不厉害，晚上床头充安全吗',
+          '带数据线吗，还是单充电头'
+        ]
+      },
+      {
+        id: 'small_appliance',
+        cat: 'fashion_tech',
+        tag: '小家电',
+        name: '多功能破壁豆浆机 预约免煮',
+        price: '¥149.0',
+        sellingPoint: '细腻免过滤、12小时预约、低音降噪、可拆洗刀头易打理',
+        painQuestions: [
+          '打出来的豆浆需要自己过滤吗，会有豆渣感吗？',
+          '早上预约打浆，声音会不会吵醒全家？',
+          '清洗麻不麻烦，刀头能不能拆下来？'
+        ],
+        scriptTips: [
+          '聚焦“口感细腻度 + 噪音控制 + 清洗便利度”三大高频痛点逐一拆解。',
+          '给出“睡前放豆+预约早上热饮”的真实生活场景画面。'
+        ],
+        sampleComments: [
+          '声音大不大，租房怕吵邻居',
+          '有没有残渣，口感顺滑吗',
+          '容量多大，够三口之家喝吗',
+          '支持高温自清洁功能吗'
+        ]
+      },
+      {
+        id: 'baby_care',
+        cat: 'pet_local',
+        tag: '母婴用品',
+        name: '纯水加厚婴儿湿巾 80抽×5包',
+        price: '¥34.9',
+        sellingPoint: 'EDI纯水配方、无酒精无香精、连抽不带出、加厚珍珠纹',
+        painQuestions: [
+          '擦宝宝嘴和手安全吗，有没有乱七八糟的添加？',
+          '抽一张会不会连带出来好几张，浪费纸巾？',
+          '纸张够不够厚实，擦便便会不会渗手？'
+        ],
+        scriptTips: [
+          '母婴场景务必克制夸张用词，清晰说明配方纯净度、厚度与连抽控制。',
+          '算清 5 包共 400 抽的单价，凸显日常高频消耗品的囤货价值。'
+        ],
+        sampleComments: [
+          '新生儿可以用吗，成分温和吗',
+          '连抽严不严重，家里有娃最烦这个',
+          '一共多少抽，算下来挺划算的',
+          '带盖子吗，还是贴纸封口'
+        ]
+      },
+      {
+        id: 'pet_food',
+        cat: 'pet_local',
+        tag: '宠物用品',
+        name: '冻干双拼全价猫粮 2.5kg',
+        price: '¥89.0',
+        sellingPoint: '高含肉量、添加鸡肉冻干、颗粒酥脆好消化、不油腻不易黑下巴',
+        painQuestions: [
+          '挑食的小猫爱吃吗，里面的冻干多不多？',
+          '吃一阵子会不会软便或者黑下巴？',
+          '怎么验证正品和检测报告？'
+        ],
+        scriptTips: [
+          '提醒“七日换粮法”体现专业度，说明适口性、油脂控制与品控查询方式。',
+          '结合猫咪日常喂养痛点给出清晰解答。'
+        ],
+        sampleComments: [
+          '挑食怪能吃得惯吗',
+          '油大不大，怕猫咪黑下巴',
+          '2.5kg大概能吃多久呀',
+          '怎么查质检报告，求安心'
+        ]
+      },
+      {
+        id: 'local_voucher',
+        cat: 'pet_local',
+        tag: '本地生活',
+        name: '双人精致烤肉自助餐券',
+        price: '¥118.0',
+        sellingPoint: '周末节假日可用、菜品丰富不限量、免预约直接核销、过期可退',
+        painQuestions: [
+          '周末和法定节假日能用吗，会不会要加价？',
+          '不用提前预约吗，高峰期去了要等多久？',
+          '没去吃或者过期了能不能退钱？'
+        ],
+        scriptTips: [
+          '把“可用时段、是否加价、预约规则、退款政策”四大核心条款讲清楚，消除套路顾虑。',
+          '引导有聚餐计划的用户先囤券锁定优惠。'
+        ],
+        sampleComments: [
+          '周末节假日通用吗，有没有限制',
+          '不用预约吗，直接到店扫码就行？',
+          '没消费能随时退吗，怕临时有事',
+          '包含饮料和甜品吗'
+        ]
+      }
+    ];
+
+    // ==================== 2. 抖音风格礼物库与随机送礼配置 ====================
+    const DOUYIN_GIFTS = [
+      { id: 'heart', name: '小心心', icon: '🩷', diamonds: 1, accent: 'from-pink-500/30 to-rose-500/20 border-pink-400/40' },
+      { id: 'glowstick', name: '荧光棒', icon: '🪄', diamonds: 9, accent: 'from-cyan-500/30 to-blue-500/20 border-cyan-400/40' },
+      { id: 'beer', name: '大啤酒', icon: '🍺', diamonds: 19, accent: 'from-amber-500/30 to-yellow-500/20 border-amber-400/40' },
+      { id: 'rose', name: '玫瑰花', icon: '🌹', diamonds: 52, accent: 'from-rose-500/35 to-red-500/25 border-rose-400/50' },
+      { id: 'fansclub', name: '灯牌办卡', icon: '🏮', diamonds: 99, accent: 'from-orange-500/35 to-amber-500/25 border-orange-400/50' },
+      { id: 'sportscar', name: '敞篷跑车', icon: '🏎️', diamonds: 520, accent: 'from-fuchsia-500/35 to-purple-500/25 border-fuchsia-400/50' },
+      { id: 'rocket', name: '星际火箭', icon: '🚀', diamonds: 1314, accent: 'from-indigo-500/35 to-sky-500/25 border-indigo-400/50' },
+      { id: 'carnival', name: '抖音嘉年华', icon: '🎡', diamonds: 3000, accent: 'from-amber-400/40 via-rose-500/35 to-purple-600/35 border-amber-300/60' }
+    ];
+
+    const GIFT_SENDERS = [
+      '晚风不吹了', '今天吃饱了吗', '一颗水蜜桃', '隔壁老王爱喝茶',
+      '橘子汽水冰镇', '早睡早起身体好', '北极熊在晒太阳', '一只小橘猫',
+      '阿杰在努力', '清欢渡', '满载而归的船', '桃子乌龙茶'
+    ];
+
+    // ==================== 3. 红黄牌分级合规规则 ====================
+    const COMPLIANCE_RULES = [
+      { level: 'red', words: ['最便宜', '全网最低', '第一', '绝对', '100%', '根治', '治愈', '特效', '国家级', '神效'], reason: '触碰极限词/绝对化或功效宣称红线，易触发限流或违规', suggestion: '建议改为“性价比很高”“口碑不错”“专注日常修护/使用体验”' },
+      { level: 'yellow', words: ['拼多多', '淘宝', '京东', '小红书', '加微信', '私信领', '保证', '包治', '稳赚'], reason: '涉及跨平台对比、引流暗示或过度承诺，建议谨慎表达', suggestion: '建议改为“直播间现享福利”“支持官方正规售后”“按需理性下单”' }
+    ];
+
+    const FILTERS = [
+      { id: 'natural', label: '自然', cls: 'filter-natural' },
+      { id: 'bright', label: '通透', cls: 'filter-bright' },
+      { id: 'warm', label: '暖光', cls: 'filter-warm' },
+      { id: 'studio', label: '棚拍', cls: 'filter-studio' }
+    ];
+
+    const NOTEBOOK_STORAGE_KEY = 'live_coach_notebook_v1';
+    const API_KEY_STORAGE_KEY = 'live_coach_gemini_key_v1';
+
+    // ==================== 4. 应用状态 ====================
+    const state = {
+      selectedCategory: 'all',
+      selectedTemplateId: PRODUCT_TEMPLATES[0].id,
+      trainingMode: 'normal', // normal | sprint | compliance
+      tones: ['bargain', 'skeptic', 'hype'],
+      targetScale: 10000,
+      cameraEnabled: false,
+      micEnabled: true,
+      filterIndex: 0,
+      cameraStream: null,
+      speechRecognition: null,
+      isRecognizing: false,
+
+      // 实时直播状态
+      isLive: false,
+      elapsedSeconds: 0,
+      currentViewers: 0,
+      peakViewers: 0,
+      gmv: 0,
+      ordersCount: 0,
+      giftDiamonds: 0,
+      giftCount: 0,
+      randomGiftCount: 0,
+      healthScore: 100,
+      lastActivityAt: 0,
+      topGiftName: '暂无',
+      activeGiftBanner: null,
+      giftBannerTimeout: null,
+
+      // 痛点连贯追问状态
+      activePain: null, // { question, round, maxRounds, timeLeft, hints }
+      painQueue: [],
+      painAnsweredCount: 0,
+      painMissedCount: 0,
+
+      // 逼单冲刺倒计时
+      sprintSecondsLeft: 30,
+      sprintSuccessCount: 0,
+
+      // 复盘记录
+      sessionLogs: [],
+      violationsHit: [],
+      lastAnchorText: '',
+
+      // 定时器句柄
+      mainInterval: null,
+      painInterval: null,
+
+      // 错题本
+      notebook: loadNotebook()
+    };
+
+    // ==================== 5. DOM 引用 ====================
+    const el = {
+      setupView: document.getElementById('setupView'),
+      liveView: document.getElementById('liveView'),
+      openNotebookBtn: document.getElementById('openNotebookBtn'),
+      notebookBadge: document.getElementById('notebookBadge'),
+      trainingModeGroup: document.getElementById('trainingModeGroup'),
+      categoryFilterBar: document.getElementById('categoryFilterBar'),
+      productPresetGrid: document.getElementById('productPresetGrid'),
+      toggleScriptPreviewBtn: document.getElementById('toggleScriptPreviewBtn'),
+      scriptPreviewDrawer: document.getElementById('scriptPreviewDrawer'),
+      productNameInput: document.getElementById('productNameInput'),
+      productPriceInput: document.getElementById('productPriceInput'),
+      productSellingPointInput: document.getElementById('productSellingPointInput'),
+      customConcernsInput: document.getElementById('customConcernsInput'),
+      toggleAdvancedBtn: document.getElementById('toggleAdvancedBtn'),
+      advancedPanel: document.getElementById('advancedPanel'),
+      advancedChevron: document.getElementById('advancedChevron'),
+      advancedSummaryBadge: document.getElementById('advancedSummaryBadge'),
+      buyerToneGroup: document.getElementById('buyerToneGroup'),
+      scaleGroup: document.getElementById('scaleGroup'),
+      toggleCameraBtn: document.getElementById('toggleCameraBtn'),
+      cameraStatusLabel: document.getElementById('cameraStatusLabel'),
+      toggleMicPrefBtn: document.getElementById('toggleMicPrefBtn'),
+      micPrefLabel: document.getElementById('micPrefLabel'),
+      apiKeyInput: document.getElementById('apiKeyInput'),
+      startLiveBtn: document.getElementById('startLiveBtn'),
+
+      cameraVideo: document.getElementById('cameraVideo'),
+      fallbackBg: document.getElementById('fallbackBg'),
+      liveTimer: document.getElementById('liveTimer'),
+      viewerCountDisplay: document.getElementById('viewerCountDisplay'),
+      gmvDisplay: document.getElementById('gmvDisplay'),
+      giftValueDisplay: document.getElementById('giftValueDisplay'),
+      healthScoreDisplay: document.getElementById('healthScoreDisplay'),
+      endLiveBtn: document.getElementById('endLiveBtn'),
+      sprintBanner: document.getElementById('sprintBanner'),
+      sprintCountdown: document.getElementById('sprintCountdown'),
+      violationAlert: document.getElementById('violationAlert'),
+      violationTitle: document.getElementById('violationTitle'),
+      violationSuggestion: document.getElementById('violationSuggestion'),
+      dismissViolationBtn: document.getElementById('dismissViolationBtn'),
+      giftBannerContainer: document.getElementById('giftBannerContainer'),
+      painPointCard: document.getElementById('painPointCard'),
+      painRoundBadge: document.getElementById('painRoundBadge'),
+      painTimerText: document.getElementById('painTimerText'),
+      painQuestionText: document.getElementById('painQuestionText'),
+      painHintText: document.getElementById('painHintText'),
+      painHintBtn: document.getElementById('painHintBtn'),
+      painSkipBtn: document.getElementById('painSkipBtn'),
+      chatFeed: document.getElementById('chatFeed'),
+      cartBoostBtn: document.getElementById('cartBoostBtn'),
+      testRandomGiftBtn: document.getElementById('testRandomGiftBtn'),
+      cycleFilterBtn: document.getElementById('cycleFilterBtn'),
+      filterNameLabel: document.getElementById('filterNameLabel'),
+      triggerPainNowBtn: document.getElementById('triggerPainNowBtn'),
+      liveTranscriptBar: document.getElementById('liveTranscriptBar'),
+      liveTranscriptText: document.getElementById('liveTranscriptText'),
+      micToggleBtn: document.getElementById('micToggleBtn'),
+      chatForm: document.getElementById('chatForm'),
+      utteranceInput: document.getElementById('utteranceInput'),
+
+      reportModal: document.getElementById('reportModal'),
+      reportSubtitle: document.getElementById('reportSubtitle'),
+      reportGradeBadge: document.getElementById('reportGradeBadge'),
+      reportContent: document.getElementById('reportContent'),
+      exportScriptBtn: document.getElementById('exportScriptBtn'),
+      exportPosterBtn: document.getElementById('exportPosterBtn'),
+      closeReportBtn: document.getElementById('closeReportBtn'),
+
+      notebookModal: document.getElementById('notebookModal'),
+      notebookContent: document.getElementById('notebookContent'),
+      closeNotebookBtn: document.getElementById('closeNotebookBtn'),
+      applyMistakesToConcernsBtn: document.getElementById('applyMistakesToConcernsBtn'),
+      clearNotebookBtn: document.getElementById('clearNotebookBtn'),
+      toastEl: document.getElementById('toastEl')
+    };
+
+    // ==================== 6. 工具与持久化函数 ====================
+    let toastTimer = null;
+    function showToast(msg) {
+      if (!el.toastEl) return;
+      el.toastEl.textContent = msg;
+      el.toastEl.classList.remove('opacity-0');
+      el.toastEl.classList.add('opacity-100');
+      clearTimeout(toastTimer);
+      toastTimer = setTimeout(() => {
+        el.toastEl.classList.remove('opacity-100');
+        el.toastEl.classList.add('opacity-0');
+      }, 2200);
+    }
+
+    function loadNotebook() {
+      try {
+        const raw = localStorage.getItem(NOTEBOOK_STORAGE_KEY);
+        const parsed = raw ? JSON.parse(raw) : [];
+        return Array.isArray(parsed) ? parsed : [];
+      } catch (err) {
+        return [];
+      }
+    }
+
+    function saveNotebook() {
+      try {
+        localStorage.setItem(NOTEBOOK_STORAGE_KEY, JSON.stringify(state.notebook.slice(0, 40)));
+      } catch (err) {
+        // 忽略存储配额异常
+      }
+      updateNotebookBadge();
+    }
+
+    function addNotebookItem(type, title, detail) {
+      const exists = state.notebook.some((item) => item.title === title && item.type === type);
+      if (exists) return;
+      state.notebook.unshift({
+        id: `${Date.now()}_${Math.random().toString(36).slice(2, 6)}`,
+        type, // 'violation' | 'pain'
+        title,
+        detail,
+        createdAt: new Date().toLocaleTimeString('zh-CN', { hour: '2-digit', minute: '2-digit' })
+      });
+      saveNotebook();
+    }
+
+    function updateNotebookBadge() {
+      if (el.notebookBadge) {
+        el.notebookBadge.textContent = String(state.notebook.length);
+      }
+    }
+
+    function parsePriceNumber(priceStr) {
+      const match = String(priceStr || '').replace(/,/g, '').match(/(\d+(?:\.\d+)?)/);
+      const val = match ? parseFloat(match[1]) : 49.9;
+      return Number.isFinite(val) && val > 0 ? Math.round(val) : 49;
+    }
+
+    function formatDuration(sec) {
+      const m = String(Math.floor(sec / 60)).padStart(2, '0');
+      const s = String(sec % 60).padStart(2, '0');
+      return `${m}:${s}`;
+    }
+
+    function getCurrentTemplate() {
+      return PRODUCT_TEMPLATES.find((t) => t.id === state.selectedTemplateId) || PRODUCT_TEMPLATES[0];
+    }
+
+    // ==================== 7. 开播配置页渲染 ====================
+    function renderProductPresetCards() {
+      if (!el.productPresetGrid) return;
+      const list = state.selectedCategory === 'all'
+        ? PRODUCT_TEMPLATES
+        : PRODUCT_TEMPLATES.filter((item) => item.cat === state.selectedCategory);
+
+      el.productPresetGrid.innerHTML = list.map((item) => {
+        const active = item.id === state.selectedTemplateId;
+        return `
+          <button
+            type="button"
+            data-preset-id="${item.id}"
+            class="preset-card shrink-0 w-40 rounded-2xl border p-3 text-left transition ${
+              active
+                ? 'border-rose-500 bg-rose-500/15 shadow-sm'
+                : 'border-zinc-800 bg-panel hover:border-zinc-700'
+            }"
+          >
+            <div class="flex items-center justify-between gap-1">
+              <span class="rounded-md bg-zinc-800/90 px-1.5 py-0.5 text-[10px] text-zinc-300">${item.tag}</span>
+              <span class="text-xs font-bold text-rose-300">${item.price}</span>
+            </div>
+            <div class="mt-2 line-clamp-2 text-xs font-semibold text-white leading-snug">${item.name}</div>
+          </button>
+        `;
+      }).join('');
+
+      el.productPresetGrid.querySelectorAll('.preset-card').forEach((btn) => {
+        btn.addEventListener('click', () => {
+          const id = btn.getAttribute('data-preset-id');
+          applyProductPreset(id);
+        });
+      });
+    }
+
+    function applyProductPreset(presetId) {
+      const tpl = PRODUCT_TEMPLATES.find((t) => t.id === presetId);
+      if (!tpl) return;
+      state.selectedTemplateId = tpl.id;
+      if (el.productNameInput) el.productNameInput.value = tpl.name;
+      if (el.productPriceInput) el.productPriceInput.value = tpl.price;
+      if (el.productSellingPointInput) el.productSellingPointInput.value = tpl.sellingPoint;
+      renderProductPresetCards();
+      renderScriptPreviewDrawer();
+    }
+
+    function renderScriptPreviewDrawer() {
+      if (!el.scriptPreviewDrawer) return;
+      const tpl = getCurrentTemplate();
+      el.scriptPreviewDrawer.innerHTML = `
+        <div>
+          <div class="font-semibold text-amber-300 mb-1">「${tpl.tag}」高频买家提问</div>
+          <ul class="space-y-1 text-zinc-300 list-disc pl-4">
+            ${tpl.painQuestions.map((q) => `<li>${q}</li>`).join('')}
+          </ul>
+        </div>
+        <div>
+          <div class="font-semibold text-emerald-300 mb-1">高转化应答思路</div>
+          <ul class="space-y-1 text-zinc-300 list-disc pl-4">
+            ${tpl.scriptTips.map((tip) => `<li>${tip}</li>`).join('')}
+          </ul>
+        </div>
+      `;
+    }
+
+    function updateAdvancedBadge() {
+      if (!el.advancedSummaryBadge) return;
+      const scaleLabel = state.targetScale >= 50000 ? '50K流量' : state.targetScale >= 10000 ? '10K流量' : '1K流量';
+      el.advancedSummaryBadge.textContent = `${state.tones.length}人设 · ${scaleLabel}`;
+    }
+
+    // ==================== 8. 摄像头与语音识别 ====================
+    async function toggleCamera() {
+      if (state.cameraEnabled) {
+        stopCameraStream();
+        state.cameraEnabled = false;
+        if (el.cameraStatusLabel) {
+          el.cameraStatusLabel.textContent = '关闭';
+          el.cameraStatusLabel.className = 'text-zinc-400';
+        }
+        return;
+      }
+
+      if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+        showToast('当前环境不支持摄像头，已启用动态极光背景');
+        return;
+      }
+
+      try {
+        const stream = await navigator.mediaDevices.getUserMedia({
+          video: { facingMode: 'user', width: { ideal: 720 }, height: { ideal: 1280 } },
+          audio: false
+        });
+        state.cameraStream = stream;
+        state.cameraEnabled = true;
+        if (el.cameraVideo) {
+          el.cameraVideo.srcObject = stream;
+          el.cameraVideo.classList.remove('hidden');
+        }
+        if (el.fallbackBg) {
+          el.fallbackBg.classList.add('hidden');
+        }
+        if (el.cameraStatusLabel) {
+          el.cameraStatusLabel.textContent = '已开启';
+          el.cameraStatusLabel.className = 'text-emerald-400';
+        }
+        showToast('前置摄像头已开启');
+      } catch (err) {
+        state.cameraEnabled = false;
+        if (el.cameraStatusLabel) {
+          el.cameraStatusLabel.textContent = '无权限/不可用';
+          el.cameraStatusLabel.className = 'text-amber-400';
+        }
+        showToast('未获取到摄像头权限，已自动切换为极光背景');
+      }
+    }
+
+    function stopCameraStream() {
+      if (state.cameraStream) {
+        state.cameraStream.getTracks().forEach((track) => track.stop());
+        state.cameraStream = null;
+      }
+      if (el.cameraVideo) {
+        el.cameraVideo.srcObject = null;
+        el.cameraVideo.classList.add('hidden');
+      }
+      if (el.fallbackBg) {
+        el.fallbackBg.classList.remove('hidden');
+      }
+    }
+
+    function setupSpeechRecognition() {
+      const SpeechRec = window.SpeechRecognition || window.webkitSpeechRecognition;
+      if (!SpeechRec || !state.micEnabled) return;
+
+      try {
+        const rec = new SpeechRec();
+        rec.lang = 'zh-CN';
+        rec.continuous = true;
+        rec.interimResults = true;
+
+        rec.onresult = (event) => {
+          if (!state.isLive || !state.micEnabled) return;
+          let interim = '';
+          let finalText = '';
+
+          for (let i = event.resultIndex; i < event.results.length; i++) {
+            const transcript = event.results[i][0].transcript;
+            if (event.results[i].isFinal) {
+              finalText += transcript;
+            } else {
+              interim += transcript;
+            }
+          }
+
+          if (interim && el.liveTranscriptBar && el.liveTranscriptText) {
+            el.liveTranscriptBar.classList.remove('hidden');
+            el.liveTranscriptText.textContent = interim;
+          }
+
+          if (finalText.trim()) {
+            if (el.liveTranscriptBar) {
+              el.liveTranscriptBar.classList.add('hidden');
+            }
+            handleUserUtterance(finalText.trim(), '语音');
+          }
+        };
+
+        rec.onerror = () => {
+          state.isRecognizing = false;
+        };
+
+        rec.onend = () => {
+          state.isRecognizing = false;
+          if (state.isLive && state.micEnabled) {
+            setTimeout(() => {
+              try {
+                rec.start();
+                state.isRecognizing = true;
+              } catch (e) {
+                // 忽略重复启动错误
+              }
+            }, 400);
+          }
+        };
+
+        state.speechRecognition = rec;
+        rec.start();
+        state.isRecognizing = true;
+      } catch (err) {
+        state.isRecognizing = false;
+      }
+    }
+
+    function stopSpeechRecognition() {
+      state.isRecognizing = false;
+      if (state.speechRecognition) {
+        try {
+          state.speechRecognition.stop();
+        } catch (e) {
+          // 忽略停止异常
+        }
+        state.speechRecognition = null;
+      }
+      if (el.liveTranscriptBar) {
+        el.liveTranscriptBar.classList.add('hidden');
+      }
+    }
+
+    // ==================== 9. 合规检测、弹幕与痛点追问 ====================
+    function scanComplianceWords(text) {
+      for (const rule of COMPLIANCE_RULES) {
+        for (const word of rule.words) {
+          if (text.includes(word)) {
+            const isRed = rule.level === 'red';
+            const penalty = isRed ? 8 : 4;
+            state.healthScore = Math.max(20, state.healthScore - penalty);
+            if (el.healthScoreDisplay) {
+              el.healthScoreDisplay.textContent = String(state.healthScore);
+              el.healthScoreDisplay.className = `ml-0.5 font-semibold ${
+                state.healthScore >= 80 ? 'text-emerald-400' : state.healthScore >= 60 ? 'text-amber-300' : 'text-rose-400'
+              }`;
+            }
+
+            const record = {
+              level: rule.level,
+              word,
+              reason: rule.reason,
+              suggestion: rule.suggestion,
+              utterance: text
+            };
+            state.violationsHit.push(record);
+            addNotebookItem(
+              'violation',
+              `${isRed ? '红牌违禁词' : '黄牌擦边词'}：${word}`,
+              `${rule.reason}｜${rule.suggestion}`
+            );
+
+            if (el.violationAlert && el.violationTitle && el.violationSuggestion) {
+              el.violationAlert.classList.remove('hidden');
+              el.violationAlert.className = `rounded-2xl border px-3 py-2 text-xs backdrop-blur-md shadow-lg transition ${
+                isRed
+                  ? 'border-rose-500/60 bg-rose-950/85 text-rose-100'
+                  : 'border-amber-400/60 bg-amber-950/85 text-amber-100'
+              }`;
+              el.violationTitle.textContent = `${isRed ? '🚨 红牌预警' : '⚠️ 黄牌提醒'}：检测到“${word}”（-${penalty}分）`;
+              el.violationSuggestion.textContent = rule.suggestion;
+            }
+            return record;
+          }
+        }
+      }
+      return null;
+    }
+
+    function appendBuyerMessage(nickname, badge, content, tagType = 'normal') {
+      if (!el.chatFeed) return;
+      const badgeClass =
+        tagType === 'order'
+          ? 'bg-amber-500/25 text-amber-200 border-amber-400/30'
+          : tagType === 'pain'
+          ? 'bg-rose-500/25 text-rose-200 border-rose-400/30'
+          : 'bg-white/10 text-zinc-300 border-white/10';
+
+      const item = document.createElement('div');
+      item.className = 'comment-enter rounded-2xl bg-black/55 backdrop-blur-md border border-white/10 px-3 py-1.5 text-xs leading-snug';
+      item.innerHTML = `
+        <span class="mr-1.5 inline-block rounded border px-1.5 py-0.2 text-[10px] ${badgeClass}">${badge}</span>
+        <span class="font-semibold text-zinc-300">${nickname}：</span>
+        <span class="text-white">${content}</span>
+      `;
+      el.chatFeed.appendChild(item);
+
+      while (el.chatFeed.children.length > 26) {
+        el.chatFeed.removeChild(el.chatFeed.firstChild);
+      }
+      el.chatFeed.scrollTop = el.chatFeed.scrollHeight;
+    }
+
+    function buildPainQueue() {
+      const tpl = getCurrentTemplate();
+      const customRaw = (el.customConcernsInput?.value || '').trim();
+      const customList = customRaw
+        ? customRaw.split(/[,，\n;；]+/).map((s) => s.trim()).filter(Boolean).slice(0, 3)
+        : [];
+
+      const combined = [...customList, ...tpl.painQuestions];
+      state.painQueue = combined.map((q, idx) => ({
+        question: q,
+        round: 1,
+        maxRounds: state.trainingMode === 'compliance' ? 3 : 2,
+        timeLeft: 8.0,
+        hints: tpl.scriptTips[idx % tpl.scriptTips.length] || '先正面回应核心顾虑，再结合商品细节与售后保障给出明确承诺。'
+      }));
+    }
+
+    function triggerPainChallenge(force = false) {
+      if (!state.isLive) return;
+      if (state.activePain && !force) return;
+
+      if (state.painQueue.length === 0) {
+        buildPainQueue();
+      }
+
+      const nextItem = state.painQueue.shift();
+      if (!nextItem) return;
+
+      state.activePain = {
+        ...nextItem,
+        timeLeft: 8.0
+      };
+      renderPainCard();
+      appendBuyerMessage('挑剔买家', '质疑提问', state.activePain.question, 'pain');
+    }
+
+    function advanceOrResolvePain(resolvedByUser) {
+      if (!state.activePain) return;
+
+      if (resolvedByUser) {
+        // 若还有后续追问轮次，概率进入下一轮深挖
+        const hasMoreRound = state.activePain.round < state.activePain.maxRounds && Math.random() < 0.55;
+        if (hasMoreRound) {
+          state.activePain.round += 1;
+          state.activePain.timeLeft = 8.0;
+          const followups = [
+            `那如果实际到手和你说的不一样，具体怎么处理？`,
+            `这个解释听起来还行，那现在下单还有额外优惠吗？`,
+            `你们仓库今天能发出来吗，别拖好几天`
+          ];
+          state.activePain.question = followups[(state.activePain.round + state.painAnsweredCount) % followups.length];
+          renderPainCard();
+          appendBuyerMessage('追问买家', `第${state.activePain.round}轮追问`, state.activePain.question, 'pain');
+          return;
+        }
+
+        state.painAnsweredCount += 1;
+        state.activePain = null;
+        if (el.painPointCard) el.painPointCard.classList.add('hidden');
+        recordOrderConversion(Math.random() < 0.45 ? 2 : 1, '拆解痛点成交');
+        triggerRandomGiftByContext('pain');
+      } else {
+        // 超时未接住，记入错题本并重新放回队列尾部
+        state.painMissedCount += 1;
+        addNotebookItem('pain', state.activePain.question, state.activePain.hints);
+        state.painQueue.push({
+          question: state.activePain.question,
+          round: 1,
+          maxRounds: state.activePain.maxRounds,
+          timeLeft: 8.0,
+          hints: state.activePain.hints
+        });
+        state.activePain = null;
+        if (el.painPointCard) el.painPointCard.classList.add('hidden');
+        appendBuyerMessage('路人观众', '略过提示', '主播刚才没看到这个问题，待会儿记得补一下~', 'normal');
+      }
+    }
+
+    function renderPainCard() {
+      if (!el.painPointCard || !state.activePain) return;
+      el.painPointCard.classList.remove('hidden');
+      if (el.painRoundBadge) el.painRoundBadge.textContent = `第${state.activePain.round}轮`;
+      if (el.painTimerText) el.painTimerText.textContent = `${state.activePain.timeLeft.toFixed(1)}s`;
+      if (el.painQuestionText) el.painQuestionText.textContent = state.activePain.question;
+      if (el.painHintText) el.painHintText.textContent = '开口回答或输入拆解话术即可成交';
+    }
+
+    function recordOrderConversion(qty = 1, sourceLabel = '下单') {
+      const unitPrice = parsePriceNumber(el.productPriceInput?.value);
+      const safeQty = Math.max(1, qty);
+      state.ordersCount += safeQty;
+      state.gmv += unitPrice * safeQty;
+
+      if (el.gmvDisplay) {
+        el.gmvDisplay.textContent = `¥${state.gmv.toLocaleString()}`;
+      }
+
+      const buyers = ['清风拂面', '开心果果', '认真选品中', '小太阳呀', '周末去露营'];
+      const buyer = buyers[Math.floor(Math.random() * buyers.length)];
+      appendBuyerMessage(buyer, sourceLabel, `拍了 ${safeQty} 单「${el.productNameInput?.value || '1号商品'}」！`, 'order');
+    }
+
+    function emitFallbackComment(anchorText = '') {
+      if (!state.isLive) return;
+      const tpl = getCurrentTemplate();
+      const tone = state.tones[Math.floor(Math.random() * state.tones.length)] || 'bargain';
+
+      const tonePools = {
+        bargain: [
+          `还能再便宜一点或者送点小东西吗？`,
+          `对比了一下，这价格在直播间算实在的`,
+          `拍两单有没有组合优惠呀`
+        ],
+        skeptic: [
+          `听起来不错，质量真的像说的那样稳吗？`,
+          `细节图再放大看看，别翻车`,
+          `用过的人来说说真实体验咋样`
+        ],
+        aftersales: [
+          `今天拍的话什么时候发货？走哪家快递？`,
+          `有运费险吗，不合适退换方便不`,
+          `售后客服响应快吗，买个安心`
+        ],
+        hype: [
+          `666，主播讲得挺清楚的！`,
+          `蹲一波福利，手速准备好`,
+          `已拍，等收货体验一下`
+        ]
+      };
+
+      const pool = tonePools[tone] || tpl.sampleComments;
+      const msg = Math.random() < 0.45
+        ? tpl.sampleComments[Math.floor(Math.random() * tpl.sampleComments.length)]
+        : pool[Math.floor(Math.random() * pool.length)];
+
+      const names = ['星星点灯', '木子李', '晴天娃娃', '山野风', '元气满满', '林深时见鹿'];
+      const badgeMap = {
+        bargain: '比价党',
+        skeptic: '挑剔党',
+        aftersales: '售后问',
+        hype: '气氛组'
+      };
+
+      const finalMsg = anchorText && Math.random() < 0.25
+        ? `刚听到你讲“${anchorText.slice(0, 10)}”，${msg}`
+        : msg;
+
+      appendBuyerMessage(
+        names[Math.floor(Math.random() * names.length)],
+        badgeMap[tone] || '观众',
+        finalMsg,
+        tone === 'hype' && Math.random() < 0.35 ? 'order' : 'normal'
+      );
+    }
+
+    // ==================== 10. 抖音风格观众随机送礼系统 ====================
+    function renderGiftBanner() {
+      if (!el.giftBannerContainer) return;
+      const banner = state.activeGiftBanner;
+      if (!banner) {
+        el.giftBannerContainer.innerHTML = '';
+        return;
+      }
+
+      el.giftBannerContainer.innerHTML = `
+        <div class="gift-banner-enter inline-flex items-center gap-2 rounded-full border bg-gradient-to-r ${banner.accent} backdrop-blur-md px-3 py-1.5 shadow-lg">
+          <span class="text-lg leading-none">${banner.icon}</span>
+          <div class="text-xs leading-tight">
+            <span class="font-bold text-white">${banner.sender}</span>
+            <span class="text-zinc-200"> 送出 </span>
+            <span class="font-semibold text-amber-200">${banner.name}</span>
+          </div>
+          <span class="ml-0.5 rounded-full bg-black/45 px-2 py-0.5 font-mono text-xs font-black text-amber-300">
+            ×${banner.combo}
+          </span>
+        </div>
+      `;
+    }
+
+    function triggerDouyinGift(giftObj, comboAdd = 1, customSender = '') {
+      if (!state.isLive || !giftObj) return;
+      const addCount = Math.max(1, comboAdd);
+      const sender = customSender || GIFT_SENDERS[Math.floor(Math.random() * GIFT_SENDERS.length)];
+
+      state.giftDiamonds += giftObj.diamonds * addCount;
+      state.giftCount += addCount;
+      state.topGiftName = `${giftObj.name}（${giftObj.diamonds}钻）`;
+
+      if (el.giftValueDisplay) {
+        el.giftValueDisplay.textContent = `${state.giftDiamonds.toLocaleString()}钻`;
+      }
+
+      if (
+        state.activeGiftBanner &&
+        state.activeGiftBanner.id === giftObj.id &&
+        state.activeGiftBanner.sender === sender
+      ) {
+        state.activeGiftBanner.combo += addCount;
+      } else {
+        state.activeGiftBanner = {
+          id: giftObj.id,
+          name: giftObj.name,
+          icon: giftObj.icon,
+          diamonds: giftObj.diamonds,
+          accent: giftObj.accent,
+          sender,
+          combo: addCount
+        };
+      }
+
+      renderGiftBanner();
+      appendBuyerMessage(sender, `送出${giftObj.name}`, `刷了 ${addCount} 个「${giftObj.name}」支持主播！`, 'order');
+
+      if (state.giftBannerTimeout) {
+        clearTimeout(state.giftBannerTimeout);
+      }
+      state.giftBannerTimeout = setTimeout(() => {
+        state.activeGiftBanner = null;
+        renderGiftBanner();
+      }, 3200);
+    }
+
+    function pickRandomDouyinGiftWeighted() {
+      const roll = Math.random();
+      if (roll < 0.42) return DOUYIN_GIFTS[0]; // 小心心（1钻）
+      if (roll < 0.66) return DOUYIN_GIFTS[1]; // 荧光棒（9钻）
+      if (roll < 0.81) return DOUYIN_GIFTS[2]; // 大啤酒（19钻）
+      if (roll < 0.90) return DOUYIN_GIFTS[3]; // 玫瑰花（52钻）
+      if (roll < 0.955) return DOUYIN_GIFTS[4]; // 灯牌办卡（99钻）
+      if (roll < 0.985) return DOUYIN_GIFTS[5]; // 敞篷跑车（520钻）
+      if (roll < 0.996) return DOUYIN_GIFTS[6]; // 星际火箭（1314钻）
+      return DOUYIN_GIFTS[7]; // 抖音嘉年华（3000钻）
+    }
+
+    function tryRandomAudienceGiftTick() {
+      if (!state.isLive) return;
+
+      const scaleBonus = state.targetScale >= 50000 ? 0.08 : state.targetScale >= 10000 ? 0.04 : 0;
+      const sprintBonus = state.trainingMode === 'sprint' && state.sprintSecondsLeft > 0 ? 0.12 : 0;
+      const recentlyActive = state.lastActivityAt > 0 && (Date.now() - state.lastActivityAt) <= 12000;
+      const activityBonus = recentlyActive ? 0.07 : -0.04;
+      const hypeBonus = state.tones.includes('hype') ? 0.05 : 0;
+
+      const chance = Math.max(0.05, Math.min(0.45, 0.16 + scaleBonus + sprintBonus + activityBonus + hypeBonus));
+      if (Math.random() > chance) return;
+
+      const giftObj = pickRandomDouyinGiftWeighted();
+      const comboRoll = Math.random();
+      const comboAdd = giftObj.diamonds <= 19
+        ? (comboRoll < 0.25 ? 3 : comboRoll < 0.6 ? 2 : 1)
+        : (comboRoll < 0.15 ? 2 : 1);
+
+      const randomSender = GIFT_SENDERS[Math.floor(Math.random() * GIFT_SENDERS.length)];
+      state.randomGiftCount += 1;
+      triggerDouyinGift(giftObj, comboAdd, randomSender);
+    }
+
+    function triggerRandomGiftByContext(context = 'chat') {
+      if (!state.isLive) return;
+      if (context === 'sprint') {
+        const highGift = DOUYIN_GIFTS[Math.floor(Math.random() * 3) + 4];
+        triggerDouyinGift(highGift, 1);
+      } else if (context === 'pain') {
+        const midGift = DOUYIN_GIFTS[Math.floor(Math.random() * 3) + 2];
+        triggerDouyinGift(midGift, Math.random() > 0.65 ? 2 : 1);
+      } else {
+        const lightGift = pickRandomDouyinGiftWeighted();
+        triggerDouyinGift(lightGift, Math.random() > 0.7 ? 2 : 1);
+      }
+    }
+
+    // ==================== 11. 主播发言处理与可选 Gemini 联动 ====================
+    async function callGeminiComments(utterance) {
+      const apiKey = (el.apiKeyInput?.value || '').trim();
+      if (!apiKey) return null;
+
+      try {
+        const prompt = `你是一个抖音直播带货观众模拟器。当前商品：${el.productNameInput?.value || '热销商品'}，价格：${el.productPriceInput?.value || '¥49'}，卖点：${el.productSellingPointInput?.value || ''}。主播刚说：“${utterance}”。请返回 JSON 数组（最多3条），每条包含 {"name":"昵称","badge":"标签","text":"简短真实的中文直播间弹幕"}。只输出 JSON。`;
+
+        const resp = await fetch(
+          `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${encodeURIComponent(apiKey)}`,
+          {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              contents: [{ parts: [{ text: prompt }] }],
+              generationConfig: { responseMimeType: 'application/json', temperature: 0.8 }
+            })
+          }
+        );
+
+        if (!resp.ok) return null;
+        const data = await resp.json();
+        const rawText = data?.candidates?.[0]?.content?.parts?.[0]?.text;
+        if (!rawText) return null;
+        const parsed = JSON.parse(rawText);
+        return Array.isArray(parsed) ? parsed.slice(0, 3) : null;
+      } catch (err) {
+        return null;
+      }
+    }
+
+    async function handleUserUtterance(rawText, channel = '文字') {
+      const clean = String(rawText || '').trim();
+      if (!clean || !state.isLive) return;
+
+      state.lastActivityAt = Date.now();
+      state.lastAnchorText = clean;
+      state.sessionLogs.push({ channel, text: clean, at: state.elapsedSeconds });
+
+      const hitViolation = scanComplianceWords(clean);
+
+      // 逼单冲刺命中检测
+      const urgeWords = ['拍', '链接', '小黄车', '最后', '抢', '下单', '抓紧', '倒计时', '赠品'];
+      const hitUrge = urgeWords.some((w) => clean.includes(w));
+      if (state.trainingMode === 'sprint' && state.sprintSecondsLeft > 0 && hitUrge && !hitViolation) {
+        state.sprintSuccessCount += 1;
+        state.sprintSecondsLeft = 30;
+        recordOrderConversion(2, '逼单冲刺连单');
+        triggerRandomGiftByContext('sprint');
+        showToast('🔥 逼单话术命中，触发连单与高阶礼物！');
+      }
+
+      // 痛点追问拆解判定
+      if (state.activePain && !hitViolation) {
+        advanceOrResolvePain(true);
+      } else if (!hitViolation && (hitUrge || Math.random() < 0.25)) {
+        recordOrderConversion(1, '互动促单');
+        if (Math.random() < 0.35) {
+          triggerRandomGiftByContext('chat');
+        }
+      }
+
+      // 优先尝试 Gemini 弹幕，失败则本地即时回应
+      const aiComments = await callGeminiComments(clean);
+      if (aiComments && aiComments.length > 0) {
+        aiComments.forEach((c, idx) => {
+          setTimeout(() => {
+            if (!state.isLive) return;
+            appendBuyerMessage(c.name || '直播观众', c.badge || 'AI互动', c.text || '听明白了！', 'normal');
+          }, idx * 450);
+        });
+      } else {
+        setTimeout(() => {
+          if (!state.isLive) return;
+          emitFallbackComment(clean);
+        }, 350);
+      }
+    }
+
+    // ==================== 12. 开播与下播生命周期 ====================
+    function startLiveSession() {
+      const prodName = (el.productNameInput?.value || '').trim();
+      if (!prodName) {
+        showToast('请先填写 1 号商品名称');
+        el.productNameInput?.focus();
+        return;
+      }
+
+      if (state.tones.length === 0) {
+        state.tones = ['bargain', 'skeptic', 'hype'];
+      }
+
+      // 重置本场状态
+      state.isLive = true;
+      state.elapsedSeconds = 0;
+      state.currentViewers = Math.max(38, Math.round(state.targetScale * 0.04));
+      state.peakViewers = state.currentViewers;
+      state.gmv = 0;
+      state.ordersCount = 0;
+      state.giftDiamonds = 0;
+      state.giftCount = 0;
+      state.randomGiftCount = 0;
+      state.healthScore = 100;
+      state.lastActivityAt = Date.now();
+      state.topGiftName = '暂无';
+      state.activeGiftBanner = null;
+      state.activePain = null;
+      state.painAnsweredCount = 0;
+      state.painMissedCount = 0;
+      state.sprintSecondsLeft = 30;
+      state.sprintSuccessCount = 0;
+      state.sessionLogs = [];
+      state.violationsHit = [];
+      state.lastAnchorText = '';
+
+      buildPainQueue();
+      renderGiftBanner();
+
+      if (el.chatFeed) el.chatFeed.innerHTML = '';
+      if (el.violationAlert) el.violationAlert.classList.add('hidden');
+      if (el.painPointCard) el.painPointCard.classList.add('hidden');
+      if (el.gmvDisplay) el.gmvDisplay.textContent = '¥0';
+      if (el.giftValueDisplay) el.giftValueDisplay.textContent = '0钻';
+      if (el.healthScoreDisplay) {
+        el.healthScoreDisplay.textContent = '100';
+        el.healthScoreDisplay.className = 'ml-0.5 font-semibold text-emerald-400';
+      }
+      if (el.viewerCountDisplay) el.viewerCountDisplay.textContent = `${state.currentViewers.toLocaleString()}人`;
+      if (el.liveTimer) el.liveTimer.textContent = '00:00';
+
+      if (el.sprintBanner) {
+        if (state.trainingMode === 'sprint') {
+          el.sprintBanner.classList.remove('hidden');
+          el.sprintBanner.classList.add('flex');
+          if (el.sprintCountdown) el.sprintCountdown.textContent = '30s';
+        } else {
+          el.sprintBanner.classList.add('hidden');
+          el.sprintBanner.classList.remove('flex');
+        }
+      }
+
+      // 切换视图
+      el.setupView?.classList.add('hidden');
+      el.liveView?.classList.remove('hidden');
+      el.liveView?.classList.add('flex');
+
+      appendBuyerMessage('系统提示', '开播提醒', `已进入「${prodName}」带货陪练场，试着开口介绍卖点或点击“促单”吧！`, 'normal');
+
+      if (state.micEnabled) {
+        setupSpeechRecognition();
+      }
+
+      // 启动主循环（每秒）
+      clearInterval(state.mainInterval);
+      state.mainInterval = setInterval(() => {
+        if (!state.isLive) return;
+        state.elapsedSeconds += 1;
+        if (el.liveTimer) el.liveTimer.textContent = formatDuration(state.elapsedSeconds);
+
+        // 动态观众数波动与攀升
+        const growthStep = Math.max(2, Math.round(state.targetScale * 0.012));
+        const jitter = Math.floor(Math.random() * (growthStep * 2 + 1)) - Math.floor(growthStep * 0.55);
+        state.currentViewers = Math.max(
+          15,
+          Math.min(Math.round(state.targetScale * 1.15), state.currentViewers + jitter)
+        );
+        if (state.currentViewers > state.peakViewers) {
+          state.peakViewers = state.currentViewers;
+        }
+        if (el.viewerCountDisplay) {
+          el.viewerCountDisplay.textContent = `${state.currentViewers.toLocaleString()}人`;
+        }
+
+        // 逼单冲刺倒计时
+        if (state.trainingMode === 'sprint') {
+          state.sprintSecondsLeft = Math.max(0, state.sprintSecondsLeft - 1);
+          if (el.sprintCountdown) el.sprintCountdown.textContent = `${state.sprintSecondsLeft}s`;
+          if (state.sprintSecondsLeft === 0) {
+            state.sprintSecondsLeft = 30;
+            showToast('逼单计时重置，趁热打铁再催一波！');
+          }
+        }
+
+        // 痛点倒计时更新
+        if (state.activePain) {
+          state.activePain.timeLeft = Math.max(0, +(state.activePain.timeLeft - 1).toFixed(1));
+          if (el.painTimerText) {
+            el.painTimerText.textContent = `${state.activePain.timeLeft.toFixed(1)}s`;
+          }
+          if (state.activePain.timeLeft <= 0) {
+            advanceOrResolvePain(false);
+          }
+        } else {
+          // 定期触发痛点质疑卡
+          const painIntervalSec = state.trainingMode === 'compliance' ? 11 : 15;
+          if (state.elapsedSeconds >= 5 && state.elapsedSeconds % painIntervalSec === 0) {
+            triggerPainChallenge(false);
+          }
+        }
+
+        // 每 4 秒驱动一次弹幕流
+        if (state.elapsedSeconds % 4 === 0) {
+          emitFallbackComment(state.lastAnchorText);
+        }
+
+        // 观众随机送礼机制：每 3 秒判定一次
+        if (state.elapsedSeconds >= 2 && state.elapsedSeconds % 3 === 0) {
+          tryRandomAudienceGiftTick();
+        }
+      }, 1000);
+    }
+
+    async function endLiveSession() {
+      if (!state.isLive) return;
+      state.isLive = false;
+      clearInterval(state.mainInterval);
+      clearTimeout(state.giftBannerTimeout);
+      stopSpeechRecognition();
+      stopCameraStream();
+      state.cameraEnabled = false;
+      if (el.cameraStatusLabel) {
+        el.cameraStatusLabel.textContent = '关闭';
+        el.cameraStatusLabel.className = 'text-zinc-400';
+      }
+
+      openReportModal();
+    }
+
+    // ==================== 13. 复盘报告、错题本与导出 ====================
+    function computeGrade() {
+      const score =
+        state.healthScore * 0.4 +
+        Math.min(35, state.painAnsweredCount * 10 + state.ordersCount * 4) +
+        Math.min(25, state.giftDiamonds / 20);
+      if (score >= 85) return 'S';
+      if (score >= 70) return 'A';
+      if (score >= 52) return 'B';
+      return 'C';
+    }
+
+    function buildRewriteSuggestions() {
+      const tpl = getCurrentTemplate();
+      const firstUtterance = state.sessionLogs[0]?.text || '这款东西还行，大家可以看看';
+      return [
+        {
+          original: firstUtterance,
+          better: `家人们看清楚，${el.productNameInput?.value || tpl.name}，到手${el.productPriceInput?.value || tpl.price}，${tpl.sellingPoint.split('、').slice(0, 2).join('、')}，有需要的直接点1号小黄车！`
+        },
+        {
+          original: '这质量没问题，放心买就行',
+          better: `关于大家最关心的细节：${tpl.scriptTips[0]}`
+        }
+      ];
+    }
+
+    function openReportModal() {
+      if (!el.reportModal || !el.reportContent) return;
+      const grade = computeGrade();
+      if (el.reportGradeBadge) el.reportGradeBadge.textContent = grade;
+      if (el.reportSubtitle) {
+        el.reportSubtitle.textContent = `时长 ${formatDuration(state.elapsedSeconds)} · 峰值 ${state.peakViewers.toLocaleString()} 人 · ${state.ordersCount} 单`;
+      }
+
+      const rewrites = buildRewriteSuggestions();
+      const violationsHtml = state.violationsHit.length > 0
+        ? state.violationsHit.map((v) => `
+            <div class="rounded-xl border border-rose-500/30 bg-rose-500/10 p-2.5">
+              <div class="font-semibold text-rose-200">${v.level === 'red' ? '红牌' : '黄牌'}词「${v.word}」</div>
+              <div class="mt-0.5 text-[11px] text-zinc-300">原句：${v.utterance}</div>
+              <div class="mt-0.5 text-[11px] text-emerald-300">建议：${v.suggestion}</div>
+            </div>
+          `).join('')
+        : `<div class="rounded-xl border border-emerald-500/25 bg-emerald-500/10 p-2.5 text-emerald-200">本场未触发违禁/极限词，合规表现稳健！</div>`;
+
+      el.reportContent.innerHTML = `
+        <div class="grid grid-cols-4 gap-2 text-center">
+          <div class="rounded-2xl border border-zinc-800 bg-panel p-2.5">
+            <div class="text-[10px] text-zinc-400">模拟GMV</div>
+            <div class="mt-1 font-bold text-amber-300">¥${state.gmv.toLocaleString()}</div>
+          </div>
+          <div class="rounded-2xl border border-zinc-800 bg-panel p-2.5">
+            <div class="text-[10px] text-zinc-400">礼物音浪</div>
+            <div class="mt-1 font-bold text-pink-300">${state.giftDiamonds.toLocaleString()}钻</div>
+          </div>
+          <div class="rounded-2xl border border-zinc-800 bg-panel p-2.5">
+            <div class="text-[10px] text-zinc-400">痛点拆解</div>
+            <div class="mt-1 font-bold text-emerald-300">${state.painAnsweredCount}题</div>
+          </div>
+          <div class="rounded-2xl border border-zinc-800 bg-panel p-2.5">
+            <div class="text-[10px] text-zinc-400">健康评分</div>
+            <div class="mt-1 font-bold text-white">${state.healthScore}分</div>
+          </div>
+        </div>
+
+        <div class="rounded-2xl border border-zinc-800 bg-panel p-3 space-y-2">
+          <div class="font-semibold text-white">合规诊断（随机送礼 ${state.randomGiftCount} 次）</div>
+          ${violationsHtml}
+        </div>
+
+        <div class="rounded-2xl border border-zinc-800 bg-panel p-3 space-y-2.5">
+          <div class="font-semibold text-amber-300">黄金话术改写对照</div>
+          ${rewrites.map((r) => `
+            <div class="rounded-xl bg-obsidian p-2.5 space-y-1">
+              <div class="text-[11px] text-zinc-400">原表达：${r.original}</div>
+              <div class="text-xs text-emerald-200">高转化改写：${r.better}</div>
+            </div>
+          `).join('')}
+        </div>
+      `;
+
+      el.reportModal.classList.remove('hidden');
+      el.reportModal.classList.add('flex');
+    }
+
+    function downloadTextFile(filename, textContent) {
+      try {
+        const blob = new Blob([textContent], { type: 'text/plain;charset=utf-8' });
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = filename;
+        a.click();
+        URL.revokeObjectURL(url);
+        showToast(`已导出 ${filename}`);
+      } catch (err) {
+        showToast('导出失败，请重试');
+      }
+    }
+
+    function exportScriptSheet() {
+      const tpl = getCurrentTemplate();
+      const rewrites = buildRewriteSuggestions();
+      const lines = [
+        `【AI 带货实战陪练舱 · 训练话术单】`,
+        `商品：${el.productNameInput?.value || tpl.name}（${el.productPriceInput?.value || tpl.price}）`,
+        `卖点：${el.productSellingPointInput?.value || tpl.sellingPoint}`,
+        `本场成绩：评级 ${computeGrade()} | 时长 ${formatDuration(state.elapsedSeconds)} | GMV ¥${state.gmv} | 礼物 ${state.giftDiamonds}钻 | 健康分 ${state.healthScore}`,
+        ``,
+        `--- 高频买家痛点与参考应答 ---`,
+        ...tpl.painQuestions.map((q, i) => `${i + 1}. 问：${q}\n   思路：${tpl.scriptTips[i % tpl.scriptTips.length]}`),
+        ``,
+        `--- 话术改写建议 ---`,
+        ...rewrites.map((r, i) => `${i + 1}. 原话：${r.original}\n   改写：${r.better}`)
+      ];
+      downloadTextFile(`带货话术单_${Date.now()}.txt`, lines.join('\n'));
+    }
+
+    function exportReportPoster() {
+      try {
+        const canvas = document.createElement('canvas');
+        canvas.width = 750;
+        canvas.height = 1120;
+        const ctx = canvas.getContext('2d');
+        if (!ctx) {
+          showToast('当前设备不支持画布导出');
+          return;
+        }
+
+        const grad = ctx.createLinearGradient(0, 0, 0, canvas.height);
+        grad.addColorStop(0, '#14141c');
+        grad.addColorStop(1, '#09090b');
+        ctx.fillStyle = grad;
+        ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+        ctx.fillStyle = '#f43f5e';
+        ctx.font = 'bold 24px sans-serif';
+        ctx.fillText('AI 带货实战陪练舱 · 复盘长图', 48, 72);
+
+        ctx.fillStyle = '#ffffff';
+        ctx.font = 'bold 38px sans-serif';
+        ctx.fillText((el.productNameInput?.value || '实战带货场').slice(0, 18), 48, 132);
+
+        ctx.fillStyle = '#a1a1aa';
+        ctx.font = '22px sans-serif';
+        ctx.fillText(`评级：${computeGrade()}级   |   时长：${formatDuration(state.elapsedSeconds)}   |   峰值：${state.peakViewers}人`, 48, 178);
+
+        const metrics = [
+          { label: '模拟 GMV', value: `¥${state.gmv}`, color: '#fcd34d' },
+          { label: '礼物音浪', value: `${state.giftDiamonds}钻`, color: '#f9a8d4' },
+          { label: '痛点拆解', value: `${state.painAnsweredCount}题`, color: '#6ee7b7' },
+          { label: '健康评分', value: `${state.healthScore}分`, color: '#ffffff' }
+        ];
+
+        metrics.forEach((m, idx) => {
+          const x = 48 + (idx % 2) * 336;
+          const y = 225 + Math.floor(idx / 2) * 165;
+          ctx.fillStyle = '#181822';
+          ctx.fillRect(x, y, 318, 140);
+          ctx.fillStyle = '#a1a1aa';
+          ctx.font = '20px sans-serif';
+          ctx.fillText(m.label, x + 22, y + 44);
+          ctx.fillStyle = m.color;
+          ctx.font = 'bold 36px sans-serif';
+          ctx.fillText(m.value, x + 22, y + 102);
+        });
+
+        const rewrites = buildRewriteSuggestions();
+        ctx.fillStyle = '#fbbf24';
+        ctx.font = 'bold 24px sans-serif';
+        ctx.fillText('黄金话术改写对照', 48, 615);
+
+        rewrites.forEach((r, idx) => {
+          const y = 650 + idx * 185;
+          ctx.fillStyle = '#181822';
+          ctx.fillRect(48, y, 654, 162);
+          ctx.fillStyle = '#a1a1aa';
+          ctx.font = '18px sans-serif';
+          ctx.fillText(`原话：${r.original.slice(0, 32)}`, 68, y + 42);
+          ctx.fillStyle = '#6ee7b7';
+          ctx.font = 'bold 20px sans-serif';
+          ctx.fillText('改写：', 68, y + 82);
+          ctx.fillStyle = '#f4f4f5';
+          ctx.font = '19px sans-serif';
+          ctx.fillText(r.better.slice(0, 31), 68, y + 114);
+          ctx.fillText(r.better.slice(31, 62), 68, y + 142);
+        });
+
+        ctx.fillStyle = '#71717a';
+        ctx.font = '18px sans-serif';
+        ctx.fillText('AI 模拟带货陪练 · 非真实直播', 48, 1065);
+
+        const dataUrl = canvas.toDataURL('image/png');
+        const link = document.createElement('a');
+        link.href = dataUrl;
+        link.download = `带货复盘长图_${Date.now()}.png`;
+        link.click();
+        showToast('复盘长图已生成并下载');
+      } catch (err) {
+        showToast('生成复盘长图失败');
+      }
+    }
+
+    function openNotebookModal() {
+      if (!el.notebookModal || !el.notebookContent) return;
+      if (state.notebook.length === 0) {
+        el.notebookContent.innerHTML = `
+          <div class="rounded-2xl border border-zinc-800 bg-panel p-6 text-center text-zinc-400">
+            错题本目前还是空的。直播中踩到违禁词或超时未接住的买家顾虑，都会自动收录到这里。
+          </div>
+        `;
+      } else {
+        el.notebookContent.innerHTML = state.notebook.map((item) => `
+          <div class="rounded-2xl border border-zinc-800 bg-panel p-3 space-y-1">
+            <div class="flex items-center justify-between">
+              <span class="rounded px-1.5 py-0.5 text-[10px] font-semibold ${
+                item.type === 'violation' ? 'bg-rose-500/20 text-rose-300' : 'bg-amber-500/20 text-amber-300'
+              }">${item.type === 'violation' ? '合规踩雷' : '待拆解顾虑'}</span>
+              <span class="text-[10px] text-zinc-500">${item.createdAt || ''}</span>
+            </div>
+            <div class="font-semibold text-white">${item.title}</div>
+            <div class="text-[11px] text-zinc-400 leading-relaxed">${item.detail}</div>
+          </div>
+        `).join('');
+      }
+      el.notebookModal.classList.remove('hidden');
+      el.notebookModal.classList.add('flex');
+    }
+
+    // ==================== 14. 事件绑定与初始化 ====================
+    function bindEvents() {
+      // 训练模式切换
+      el.trainingModeGroup?.querySelectorAll('.mode-btn').forEach((btn) => {
+        btn.addEventListener('click', () => {
+          const mode = btn.getAttribute('data-mode') || 'normal';
+          state.trainingMode = mode;
+          el.trainingModeGroup.querySelectorAll('.mode-btn').forEach((b) => {
+            const active = b.getAttribute('data-mode') === mode;
+            b.className = `mode-btn rounded-2xl border p-2.5 text-left transition ${
+              active
+                ? 'border-rose-500 bg-rose-500/15 text-white'
+                : 'border-zinc-800 bg-panel text-zinc-200 hover:border-zinc-700'
+            }`;
+            const titleEl = b.querySelector('div:first-child');
+            if (titleEl) {
+              titleEl.className = `text-xs font-semibold ${active ? 'text-white' : 'text-zinc-200'}`;
+            }
+          });
+        });
+      });
+
+      // 类目筛选
+      el.categoryFilterBar?.querySelectorAll('.cat-filter-btn').forEach((btn) => {
+        btn.addEventListener('click', () => {
+          const cat = btn.getAttribute('data-cat') || 'all';
+          state.selectedCategory = cat;
+          el.categoryFilterBar.querySelectorAll('.cat-filter-btn').forEach((b) => {
+            const active = b.getAttribute('data-cat') === cat;
+            b.className = `cat-filter-btn shrink-0 rounded-full px-3 py-1 text-[11px] transition ${
+              active
+                ? 'bg-zinc-100 font-semibold text-zinc-950'
+                : 'bg-panel border border-zinc-800 text-zinc-300 hover:border-zinc-700'
+            }`;
+          });
+          renderProductPresetCards();
+        });
+      });
+
+      // 话术预览抽屉
+      if (el.toggleScriptPreviewBtn && el.scriptPreviewDrawer) {
+        el.toggleScriptPreviewBtn.addEventListener('click', () => {
+          renderScriptPreviewDrawer();
+          const willOpen = el.scriptPreviewDrawer.classList.contains('hidden');
+          el.scriptPreviewDrawer.classList.toggle('hidden');
+          el.toggleScriptPreviewBtn.textContent = willOpen ? '收起本类高频话术 ▴' : '查看本类高频话术 ▾';
+        });
+      }
+
+      // 高级参数折叠手风琴
+      if (el.toggleAdvancedBtn && el.advancedPanel) {
+        el.toggleAdvancedBtn.addEventListener('click', () => {
+          const willOpen = el.advancedPanel.classList.contains('hidden');
+          el.advancedPanel.classList.toggle('hidden');
+          if (el.advancedChevron) {
+            el.advancedChevron.textContent = willOpen ? '▴' : '▾';
+          }
+        });
+      }
+
+      // 买家画像多选
+      el.buyerToneGroup?.querySelectorAll('.tone-btn').forEach((btn) => {
+        btn.addEventListener('click', () => {
+          const tone = btn.getAttribute('data-tone');
+          if (!tone) return;
+          if (state.tones.includes(tone)) {
+            if (state.tones.length === 1) {
+              showToast('至少保留 1 种买家画像');
+              return;
+            }
+            state.tones = state.tones.filter((t) => t !== tone);
+          } else {
+            state.tones.push(tone);
+          }
+
+          el.buyerToneGroup.querySelectorAll('.tone-btn').forEach((b) => {
+            const t = b.getAttribute('data-tone');
+            const active = state.tones.includes(t);
+            b.className = `tone-btn rounded-xl border px-3 py-2 text-left transition ${
+              active
+                ? 'border-rose-500/80 bg-rose-500/15 text-white'
+                : 'border-zinc-800 bg-obsidian text-zinc-200 hover:border-zinc-700'
+            }`;
+          });
+          updateAdvancedBadge();
+        });
+      });
+
+      // 流量池规模切换
+      el.scaleGroup?.querySelectorAll('.scale-btn').forEach((btn) => {
+        btn.addEventListener('click', () => {
+          const scale = Number(btn.getAttribute('data-scale') || 10000);
+          state.targetScale = scale;
+          el.scaleGroup.querySelectorAll('.scale-btn').forEach((b) => {
+            const active = Number(b.getAttribute('data-scale')) === scale;
+            b.className = `scale-btn rounded-xl border py-2 text-center text-xs transition ${
+              active
+                ? 'border-rose-500/80 bg-rose-500/15 font-medium text-white'
+                : 'border-zinc-800 bg-obsidian text-zinc-300 hover:border-zinc-700'
+            }`;
+          });
+          updateAdvancedBadge();
+        });
+      });
+
+      // 镜头与语音偏好
+      if (el.toggleCameraBtn) {
+        el.toggleCameraBtn.addEventListener('click', toggleCamera);
+      }
+
+      if (el.toggleMicPrefBtn && el.micPrefLabel) {
+        el.toggleMicPrefBtn.addEventListener('click', () => {
+          state.micEnabled = !state.micEnabled;
+          el.micPrefLabel.textContent = state.micEnabled ? '开启' : '关闭';
+          el.micPrefLabel.className = state.micEnabled ? 'text-emerald-400' : 'text-zinc-400';
+        });
+      }
+
+      // API Key 本地记忆
+      if (el.apiKeyInput) {
+        try {
+          el.apiKeyInput.value = localStorage.getItem(API_KEY_STORAGE_KEY) || '';
+        } catch (err) {}
+        el.apiKeyInput.addEventListener('change', () => {
+          try {
+            localStorage.setItem(API_KEY_STORAGE_KEY, el.apiKeyInput.value.trim());
+          } catch (err) {}
+        });
+      }
+
+      // 开播与下播
+      if (el.startLiveBtn) {
+        el.startLiveBtn.addEventListener('click', startLiveSession);
+      }
+      if (el.endLiveBtn) {
+        el.endLiveBtn.addEventListener('click', endLiveSession);
+      }
+
+      // 直播间快捷互动
+      if (el.cartBoostBtn) {
+        el.cartBoostBtn.addEventListener('click', () => {
+          if (!state.isLive) return;
+          state.lastActivityAt = Date.now();
+          recordOrderConversion(Math.random() < 0.4 ? 2 : 1, '小黄车喊单');
+          if (Math.random() < 0.45) {
+            triggerRandomGiftByContext('sprint');
+          }
+          showToast('已触发小黄车促单播报');
+        });
+      }
+
+      if (el.testRandomGiftBtn) {
+        el.testRandomGiftBtn.addEventListener('click', () => {
+          if (!state.isLive) return;
+          const giftObj = pickRandomDouyinGiftWeighted();
+          const combo = giftObj.diamonds <= 19 ? (Math.floor(Math.random() * 3) + 1) : 1;
+          triggerDouyinGift(giftObj, combo);
+        });
+      }
+
+      if (el.cycleFilterBtn && el.filterNameLabel && el.cameraVideo) {
+        el.cycleFilterBtn.addEventListener('click', () => {
+          state.filterIndex = (state.filterIndex + 1) % FILTERS.length;
+          const f = FILTERS[state.filterIndex];
+          el.filterNameLabel.textContent = f.label;
+          el.cameraVideo.className = `h-full w-full object-cover mirror-video ${f.cls} ${state.cameraEnabled ? '' : 'hidden'}`;
+          showToast(`画面滤镜：${f.label}`);
+        });
+      }
+
+      if (el.triggerPainNowBtn) {
+        el.triggerPainNowBtn.addEventListener('click', () => {
+          triggerPainChallenge(true);
+        });
+      }
+
+      if (el.painHintBtn && el.painHintText) {
+        el.painHintBtn.addEventListener('click', () => {
+          if (state.activePain) {
+            el.painHintText.textContent = `💡 ${state.activePain.hints}`;
+          }
+        });
+      }
+
+      if (el.painSkipBtn) {
+        el.painSkipBtn.addEventListener('click', () => {
+          if (!state.activePain) return;
+          state.activePain = null;
+          el.painPointCard?.classList.add('hidden');
+          triggerPainChallenge(true);
+        });
+      }
+
+      if (el.dismissViolationBtn && el.violationAlert) {
+        el.dismissViolationBtn.addEventListener('click', () => {
+          el.violationAlert.classList.add('hidden');
+        });
+      }
+
+      // 快捷话术按钮
+      document.querySelectorAll('.quick-phrase-btn').forEach((btn) => {
+        btn.addEventListener('click', () => {
+          const phrase = btn.getAttribute('data-quick');
+          if (phrase) {
+            handleUserUtterance(phrase, '快捷话术');
+          }
+        });
+      });
+
+      // 直播间麦克风开关
+      if (el.micToggleBtn) {
+        el.micToggleBtn.addEventListener('click', () => {
+          state.micEnabled = !state.micEnabled;
+          if (state.micEnabled) {
+            el.micToggleBtn.classList.add('mic-active', 'border-rose-500', 'text-rose-300');
+            setupSpeechRecognition();
+            showToast('麦克风已开启');
+          } else {
+            el.micToggleBtn.classList.remove('mic-active', 'border-rose-500', 'text-rose-300');
+            stopSpeechRecognition();
+            showToast('麦克风已静音');
+          }
+        });
+      }
+
+      // 表单发送话术
+      if (el.chatForm && el.utteranceInput) {
+        el.chatForm.addEventListener('submit', (e) => {
+          e.preventDefault();
+          const val = el.utteranceInput.value.trim();
+          if (!val) return;
+          el.utteranceInput.value = '';
+          handleUserUtterance(val, '文字');
+        });
+
+        el.utteranceInput.addEventListener('focus', () => {
+          setTimeout(() => {
+            if (el.chatFeed) {
+              el.chatFeed.scrollTop = el.chatFeed.scrollHeight;
+            }
+          }, 250);
+        });
+      }
+
+      // 复盘弹窗操作
+      if (el.exportScriptBtn) {
+        el.exportScriptBtn.addEventListener('click', exportScriptSheet);
+      }
+      if (el.exportPosterBtn) {
+        el.exportPosterBtn.addEventListener('click', exportReportPoster);
+      }
+      if (el.closeReportBtn && el.reportModal) {
+        el.closeReportBtn.addEventListener('click', () => {
+          el.reportModal.classList.add('hidden');
+          el.reportModal.classList.remove('flex');
+          el.liveView?.classList.add('hidden');
+          el.liveView?.classList.remove('flex');
+          el.setupView?.classList.remove('hidden');
+        });
+      }
+
+      // 错题本弹窗操作
+      if (el.openNotebookBtn) {
+        el.openNotebookBtn.addEventListener('click', openNotebookModal);
+      }
+      if (el.closeNotebookBtn && el.notebookModal) {
+        el.closeNotebookBtn.addEventListener('click', () => {
+          el.notebookModal.classList.add('hidden');
+          el.notebookModal.classList.remove('flex');
+        });
+      }
+      if (el.applyMistakesToConcernsBtn && el.customConcernsInput) {
+        el.applyMistakesToConcernsBtn.addEventListener('click', () => {
+          const painItems = state.notebook
+            .filter((x) => x.type === 'pain')
+            .map((x) => x.title)
+            .slice(0, 3);
+          if (painItems.length === 0) {
+            showToast('错题本中暂无待拆解顾虑');
+            return;
+          }
+          el.customConcernsInput.value = painItems.join('，');
+          el.notebookModal?.classList.add('hidden');
+          el.notebookModal?.classList.remove('flex');
+          showToast('已将错题顾虑填入本场重点考题');
+        });
+      }
+      if (el.clearNotebookBtn) {
+        el.clearNotebookBtn.addEventListener('click', () => {
+          state.notebook = [];
+          saveNotebook();
+          openNotebookModal();
+          showToast('错题本已清空');
+        });
+      }
+    }
+
+    // 初始化应用
+    (function init() {
+      applyProductPreset(state.selectedTemplateId);
+      updateAdvancedBadge();
+      updateNotebookBadge();
+      bindEvents();
+    })();
+  </script>
+</body>
+</html>
